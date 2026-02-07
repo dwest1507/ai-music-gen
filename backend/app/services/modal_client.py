@@ -38,10 +38,15 @@ def generate_music_task(prompt: str, duration: int, genre: str):
         # Lookup the Modal function
         # This requires the Modal app to be deployed separately
         try:
-            f = modal.Function.lookup(MODAL_APP_NAME, MODAL_FUNCTION_NAME)
-        except modal.exception.NotFoundError:
-            logger.error(f"Modal app '{MODAL_APP_NAME}' not found.")
-            raise Exception("Modal app not deployed. Please deploy the backend/modal_app.py first.")
+            # New Modal API (v1.0+) uses from_name
+            f = modal.Function.from_name(MODAL_APP_NAME, MODAL_FUNCTION_NAME)
+        except Exception:
+            try:
+                # Fallback for older versions
+                f = modal.Function.lookup(MODAL_APP_NAME, MODAL_FUNCTION_NAME)
+            except Exception:
+                 logger.error(f"Modal app '{MODAL_APP_NAME}' not found.")
+                 raise Exception("Modal app not deployed. Please deploy the backend/modal_app.py first.")
 
         # Call the function remotely
         # The modal function is expected to return audio bytes

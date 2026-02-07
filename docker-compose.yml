@@ -1,7 +1,9 @@
 version: '3.8'
 services:
   backend:
-    build: ./backend
+    build:
+      context: .
+      dockerfile: Dockerfile
     ports:
       - "8000:8000"
     environment:
@@ -14,6 +16,22 @@ services:
       - redis
     volumes:
       - ./backend:/app # Hot reload for development
+      - audio_temp:/app/audio_temp
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: rq worker
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - MODAL_TOKEN_ID=${MODAL_TOKEN_ID}
+      - MODAL_TOKEN_SECRET=${MODAL_TOKEN_SECRET}
+    depends_on:
+      - redis
+      - backend
+    volumes:
+      - ./backend:/app
       - audio_temp:/app/audio_temp
 
   redis:
