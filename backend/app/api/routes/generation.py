@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Request, Response, status, Depends
 from fastapi.responses import FileResponse, JSONResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from typing import Optional
 import secrets
 import logging
@@ -14,9 +14,17 @@ logger = logging.getLogger(__name__)
 SESSION_COOKIE_NAME = "session_id"
 
 class GenerationRequest(BaseModel):
-    prompt: str = Field(..., max_length=500)
+    prompt: str = Field(..., min_length=1, max_length=500)
     duration: int = Field(60, ge=30, le=120)  # 30, 60, 120
     genre: Optional[str] = None
+    
+    @field_validator('prompt')
+    @classmethod
+    def validate_prompt_not_empty(cls, v: str) -> str:
+        """Ensure prompt is not empty or whitespace-only."""
+        if not v or not v.strip():
+            raise ValueError('Prompt cannot be empty or whitespace-only')
+        return v.strip()  # Return trimmed prompt
 
 class JobResponse(BaseModel):
     job_id: str
