@@ -1,12 +1,16 @@
-FROM python:3.11.14-alpine3.23
+FROM python:3.11-slim
 
 # Security: Run as non-root user
 RUN useradd -m -u 1000 appuser
 
 WORKDIR /app
-COPY requirements.txt .
+
+# Copy requirements from backend directory
+COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-COPY . .
+
+# Copy backend application code
+COPY backend/ .
 
 # Security: Switch to non-root user
 USER appuser

@@ -1,12 +1,12 @@
 import modal
 
 # Define the Modal application
-stub = modal.Stub("music-gen-app")
+app = modal.App("music-gen-app")
 
 # Define the image with necessary dependencies
 image = modal.Image.debian_slim().pip_install("torch", "torchaudio", "diffusers", "transformers")
 
-@stub.function(image=image, gpu="any", timeout=600)
+@app.function(image=image, gpu="any", timeout=600)
 def generate(prompt: str, duration: int, genre: str):
     """
     Generate music based on the prompt.
