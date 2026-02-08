@@ -20,8 +20,8 @@ def generate_music_task(prompt: str, duration: int, genre: str):
     job_id = job.id
     logger.info(f"Starting generation for job {job_id}")
     
-    # Ensure audio directory exists
-    output_dir = "/app/audio_temp"
+    # Ensure audio directory exists (use /tmp for write permissions)
+    output_dir = "/tmp/audio_temp"
     os.makedirs(output_dir, exist_ok=True)
     output_path = f"{output_dir}/{job_id}.wav"
 
@@ -50,15 +50,36 @@ def generate_music_task(prompt: str, duration: int, genre: str):
 
         # Call the function remotely
         # The modal function is expected to return audio bytes
+        # Call the function remotely
+        # The modal function is expected to return audio bytes
         logger.info(f"Calling Modal function '{MODAL_FUNCTION_NAME}'...")
         audio_bytes = f.remote(prompt, duration, genre)
         
-        # Save result
+        # Save result locally (as backup/cache)
         with open(output_path, "wb") as f_out:
             f_out.write(audio_bytes)
             
+        # Upload to Storage (R2/S3)
+        from app.services.storage import storage_service
+        storage_key = f"{job_id}.wav"
+        
+        result_data = {
+            "status": "completed", 
+            "path": output_path, # Keep local path for reference
+        }
+        
+        if storage_service.enabled:
+            logger.info(f"Uploading {storage_key} to storage...")
+            success = storage_service.upload_file(audio_bytes, storage_key)
+            if success:
+                result_data["storage_key"] = storage_key
+                result_data["storage_type"] = "s3"
+            else:
+                logger.error("Failed to upload to storage")
+                # We don't fail the job if upload fails, but API might not be able to serve it if different node
+        
         logger.info(f"Job {job_id} completed successfully.")
-        return {"status": "completed", "path": output_path}
+        return result_data
         
     except Exception as e:
         logger.exception(f"Job {job_id} failed: {e}")

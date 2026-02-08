@@ -1,20 +1,25 @@
-# Object Storage Integration Guide
+# Object Storage Integration Guide (Implemented)
 
 ## Overview
 
 This guide details how to implement object storage (AWS S3, Cloudflare R2, or Google Cloud Storage) for the AI Music Generator. This is **required** for production deployments where the Worker and API services run in separate environments (e.g., Railway). 
 
-Currently, the Worker generates audio files and saves them to its local filesystem. The API, running separately, cannot access these files. By using object storage, the Worker uploads the generated audio to a shared bucket, and the API serves a secure URL for downloading the file.
+Currently, the Worker generates audio files and uploads them to the configured object storage (Cloudflare R2). The API generates presigned URLs for the frontend to download/stream the content.
 
 ## Prerequisites
 
 1.  **Cloud Provider Account**: AWS, Cloudflare, or Google Cloud.
-2.  **Storage Bucket**: A bucket created specifically for this project (e.g., `ai-music-gen-assets`).
+2.  **Storage Bucket**: A bucket created specifically for this project (e.g., `your-bucket-name`).
 3.  **Credentials**: Access Key ID and Secret Access Key.
 
----
-
-## implementation Strategy
+16: 
+17: ## Status: Implemented
+18: 
+19: The integration supports generic S3 protocol (AWS S3, Cloudflare R2, MinIO).
+20: 
+21: ---
+22: 
+23: ## Implementation Details
 
 We will use the generic S3 protocol, which is supported by AWS, Cloudflare R2, DigitalOcean Spaces, and MinIO. This avoids vendor lock-in.
 
@@ -27,7 +32,7 @@ Add the following variables to your `.env` (local) and Railway/Vercel (productio
 STORAGE_ENDPOINT_URL=https://<account-id>.r2.cloudflarestorage.com  # or AWS/GCS endpoint
 STORAGE_ACCESS_KEY_ID=your_access_key
 STORAGE_SECRET_ACCESS_KEY=your_secret_key
-STORAGE_BUCKET_NAME=ai-music-gen-assets
+STORAGE_BUCKET_NAME=your-bucket-name
 STORAGE_REGION=auto  # or specific region like us-east-1
 ```
 

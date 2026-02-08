@@ -136,6 +136,17 @@ async def download_audio(job_id: str, request: Request):
     # Check if file exists
     # We need path. Task returns path.
     result = job.result
+    
+    # Try Storage First
+    if result and "storage_key" in result:
+        storage_key = result["storage_key"]
+        from app.services.storage import storage_service
+        url = storage_service.generate_presigned_url(storage_key)
+        if url:
+            from fastapi.responses import RedirectResponse
+            return RedirectResponse(url)
+            
+    # Fallback to local file (only works if API and Worker are same machine)
     if not result or not result.get("path"):
          raise HTTPException(status_code=500, detail="Audio file missing")
          

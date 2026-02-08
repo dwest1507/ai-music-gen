@@ -14,22 +14,24 @@ flowchart LR
         NextJS[Next.js App]
     end
     
-    subgraph Backend["Backend API (Railway)"]
-        FastAPI[FastAPI Server]
-        Redis[(Redis - Job Queue)]
-        Storage[(Temp Storage)]
+    subgraph Backend["Backend Services (Railway)"]
+        FastAPI[API Server]
+        Worker[Celery/RQ Worker]
+        Redis[(Redis Queue)]
     end
     
-    subgraph GPU["GPU Inference (Modal)"]
-        ACEStep[ACE-Step v1.5]
+    subgraph Infrastructure
+        ObjectStorage[(S3 Compatible Storage)]
+        GPU["GPU Inference (Modal)"]
     end
     
     Browser --> NextJS
     NextJS --> FastAPI
-    FastAPI --> Redis
-    FastAPI --> ACEStep
-    ACEStep --> Storage
-    FastAPI --> Storage
+    FastAPI -- Enqueue Job --> Redis
+    Redis -- Dequeue Job --> Worker
+    Worker -- Call --> GPU
+    Worker -- Upload Audio --> ObjectStorage
+    FastAPI -- Signed URL --> ObjectStorage
 ```
 
 ## Technology Stack
@@ -38,9 +40,10 @@ flowchart LR
 |-------|------------|---------|
 | Frontend | Next.js 14+ | Vercel |
 | Backend API | Python FastAPI + Docker | Railway |
+| Worker | Python RQ + Docker | Railway |
 | Job Queue | Redis | Railway Add-on |
 | GPU Inference | ACE-Step v1.5 | Modal |
-| Temp Storage | Railway filesystem | Railway |
+| Object Storage | AWS S3 / Cloudflare R2 | Cloud Provider |
 | CI/CD | GitHub Actions | GitHub |
 
 ## Setup Instructions

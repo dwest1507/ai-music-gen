@@ -84,17 +84,73 @@ We will use Railway to host the FastAPI backend and the Redis instance required 
     -   In the Railway project view, click "New" -> "GitHub Repo" (select same repo `ai-music-gen`).
     -   Go to **Settings** -> Change name to "worker".
     -   **Root Directory**: Set effectively to `/backend` (service watch paths).
-    -   **Start Command**: `rq worker`.
+    -   **Start Command**: `sh -c 'rq worker --url "$REDIS_URL"'`
     -   **Variables**:
         -   Copy the SAME variables from the Backend Service (`REDIS_URL`, `MODAL_TOKEN_ID`, `MODAL_TOKEN_SECRET`, `SESSION_SECRET`).
         -   Ensure `REDIS_URL` matches the Redis service internal URL.
+    -   **⚠️ Note**: The Worker and API run in separate containers with separate filesystems. For audio file sharing to work in production, you MUST implement Object Storage (see `docs/OBJECT_STORAGE_PLAN.md`).
 
 7.  **Deploy**:
     -   Railway usually triggers a deployment on creation. If not, click "Deploy" for both services.
 
 ---
 
-## 3. Deploy Frontend (Vercel)
+## 4. Cloudflare R2 Setup (Object Storage)
+
+**Required** for sharing generated audio files between the Worker (Modal/Railway) and API (Railway).
+
+1.  **Create Bucket**:
+    -   Log in to the [Cloudflare Dashboard](https://dash.cloudflare.com/).
+    -   Go to **R2** from the sidebar.
+    -   Click **Create bucket**.
+    -   Name it.
+    -   Click **Create bucket**.
+
+2.  **Configure CORS**:
+    -   Go to the bucket settings -> **CORS**.
+    -   Add a policy to allow your frontend URL (and localhost for testing).
+    ```json
+    [
+      {
+        "AllowedOrigins": [
+          "https://your-frontend-url.vercel.app"
+        ],
+        "AllowedMethods": [
+          "GET",
+          "HEAD"
+        ],
+        "AllowedHeaders": [
+          "*"
+        ]
+      }
+    ]
+    ```
+
+3.  **Generate API Token**:
+    -   Go back to the main R2 page.
+    -   Click **Manage R2 API Tokens** (right sidebar).
+    -   Click **Create API token**.
+    -   **Permissions**: `Object Read & Write`.
+    -   **Bucket**: Select your specific bucket (`your-bucket-name`).
+    -   Click **Create API Token**.
+    -   **Copy the following**:
+        -   `Access Key ID`
+        -   `Secret Access Key`
+        -   `Endpoint` (Use the S3 API endpoint for your bucket, distinct from the account-level endpoint). It usually looks like `https://<ACCOUNT_ID>.r2.cloudflarestorage.com`.
+
+4.  **Update Railway Variables**:
+    -   Go to your **Railway Project**.
+    -   For **BOTH** the `Backend` and `Worker` services, add these variables:
+        -   `STORAGE_ENDPOINT_URL`: The S3 API Endpoint you copied (e.g. `https://<id>.r2.cloudflarestorage.com`).
+        -   `STORAGE_ACCESS_KEY_ID`: Your R2 Access Key ID.
+        -   `STORAGE_SECRET_ACCESS_KEY`: Your R2 Secret Access Key.
+        -   `STORAGE_BUCKET_NAME`: `your-bucket-name`.
+        -   `STORAGE_REGION`: `auto`.
+    -   Redeploy both services.
+
+---
+
+## 5. Deploy Frontend (Vercel)
 
 1.  **Import Project**:
     -   Go to [Vercel Dashboard](https://vercel.com/dashboard).
@@ -122,7 +178,7 @@ We will use Railway to host the FastAPI backend and the Redis instance required 
 
 ---
 
-## 4. Verification
+## 6. Verification
 
 1.  Open your Vercel deployment URL.
 2.  Enter a prompt and click "Generate".
