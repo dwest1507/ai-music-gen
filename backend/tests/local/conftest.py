@@ -5,7 +5,8 @@ from unittest.mock import MagicMock, patch
 from httpx import AsyncClient, ASGITransport
 
 # Add the backend directory to sys.path to ensure imports work correctly
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# tests/local/conftest.py -> go up 2 levels to reach backend/
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 # Mock redis and rq before importing app to prevent connection attempts
 # We use a session-scoped autouse fixture to patch these for all tests
