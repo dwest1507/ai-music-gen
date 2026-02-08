@@ -80,8 +80,17 @@ We will use Railway to host the FastAPI backend and the Redis instance required 
     -   Click "Generate Domain" to get a public URL (e.g., `web-production-1234.up.railway.app`).
     -   **Copy this URL** for the frontend deployment.
 
-6.  **Deploy**:
-    -   Railway usually triggers a deployment on creation. If not, click "Deploy".
+6.  **Deploy Worker Service**:
+    -   In the Railway project view, click "New" -> "GitHub Repo" (select same repo `ai-music-gen`).
+    -   Go to **Settings** -> Change name to "worker".
+    -   **Root Directory**: Set effectively to `/backend` (service watch paths).
+    -   **Start Command**: `rq worker`.
+    -   **Variables**:
+        -   Copy the SAME variables from the Backend Service (`REDIS_URL`, `MODAL_TOKEN_ID`, `MODAL_TOKEN_SECRET`, `SESSION_SECRET`).
+        -   Ensure `REDIS_URL` matches the Redis service internal URL.
+
+7.  **Deploy**:
+    -   Railway usually triggers a deployment on creation. If not, click "Deploy" for both services.
 
 ---
 
