@@ -64,24 +64,25 @@ export function AudioPlayer({ audioUrl, className }: AudioPlayerProps) {
         
         let filename = "generated-music.mp3";
         try {
-            // Try to extract from ?path= query param
             const urlObj = new URL(audioUrl, window.location.origin);
+            
+            // Try to use the task ID from the URL path: /api/audio/{task_id}
+            const parts = urlObj.pathname.split("/");
+            const taskId = parts[parts.length - 1];
+            if (taskId && taskId !== "audio") {
+                filename = `music_${taskId}.mp3`;
+            }
+
+            // Fallback: Try to extract from ?path= query param if still present
             const pathParam = urlObj.searchParams.get("path");
             if (pathParam && pathParam.includes(".")) {
-                const parts = pathParam.split("/");
-                filename = parts[parts.length - 1];
-            } else {
-                // Try from base URL
-                const parts = urlObj.pathname.split("/");
-                const name = parts[parts.length - 1];
-                if (name && name.includes(".")) {
-                    filename = name;
-                }
+                const pathParts = pathParam.split("/");
+                filename = pathParts[pathParts.length - 1];
             }
         } catch (e) {
             // Fallback formats
-            if (audioUrl.includes(".wav")) filename = "generated-music.wav";
-            else if (audioUrl.includes(".flac")) filename = "generated-music.flac";
+            if (audioUrl.includes("wav")) filename = "generated-music.wav";
+            else if (audioUrl.includes("flac")) filename = "generated-music.flac";
         }
         
         link.download = filename;

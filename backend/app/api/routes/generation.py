@@ -5,13 +5,9 @@ from typing import Optional
 import secrets
 import logging
 
+from app.core.config import settings
 from app.core.limiter import limiter
 from app.services.acestep_client import ACEStepClient, ACEStepError
-
-router = APIRouter()
-logger = logging.getLogger(__name__)
-
-SESSION_COOKIE_NAME = "session_id"
 
 # ── Pydantic models ──────────────────────────────────────────────
 
@@ -75,11 +71,12 @@ def get_session_id(request: Request, response: Response) -> str:
     session_id = request.cookies.get(SESSION_COOKIE_NAME)
     if not session_id:
         session_id = secrets.token_urlsafe(32)
+        is_secure = not settings.FRONTEND_URL.startswith("http://localhost")
         response.set_cookie(
             key=SESSION_COOKIE_NAME,
             value=session_id,
             httponly=True,
-            secure=True,
+            secure=is_secure,
             samesite="lax",
         )
     return session_id
@@ -155,8 +152,10 @@ async def submit_generation(
 
 
 @router.get("/jobs/{task_id}")
-async def get_job_status(task_id: str, request: Request):
+@limiter.limit("60/minute")
+async def get_job_status(task_id: str, request: Request, response: Response):
     """Query the status of a generation task."""
+    get_session_id(request, response)
     client = _get_client(request)
 
     try:
@@ -185,10 +184,10 @@ async def get_job_status(task_id: str, request: Request):
             audio_files = [audio_files]
 
         if audio_files:
-            response_data["audio_url"] = f"/api/audio/{task_id}?path={audio_files[0]}"
+            response_data["audio_url"] = f"/api/audio/{task_id}?index=0"
             if len(audio_files) > 1:
                 response_data["audio_urls"] = [
-                    f"/api/audio/{task_id}?path={f}" for f in audio_files
+                    f"/api/audio/{task_id}?index={i}" for i in range(len(audio_files))
                 ]
 
         # Include generation metadata if available
@@ -208,16 +207,34 @@ async def get_job_status(task_id: str, request: Request):
 from fastapi.responses import StreamingResponse
 
 @router.get("/audio/{task_id}")
+@limiter.limit("20/minute")
 async def download_audio(
     task_id: str,
     request: Request,
-    path: str = Query(..., description="Audio file path from task result"),
+    response: Response,
+    index: int = Query(0, description="Index of the audio file to download", ge=0),
 ):
     """Proxy-download generated audio from the ACE-Step API via a stream."""
+    get_session_id(request, response)
     client = _get_client(request)
 
     try:
-        resp = await client.download_audio_stream(path)
+        # Prevent SSRF: Lookup actual path using the task ID
+        result = await client.query_result([task_id])
+        tasks = result if isinstance(result, list) else [result]
+        if not tasks:
+            raise HTTPException(status_code=404, detail="Task not found")
+        task = tasks[0] if isinstance(tasks, list) else tasks
+        
+        audio_files = task.get("file", [])
+        if isinstance(audio_files, str):
+            audio_files = [audio_files]
+            
+        if not audio_files or index >= len(audio_files):
+            raise HTTPException(status_code=404, detail="Audio file not found")
+            
+        safe_path = audio_files[index]
+        resp = await client.download_audio_stream(safe_path)
     except ACEStepError as e:
         raise HTTPException(status_code=e.status_code, detail=e.message)
 
@@ -248,8 +265,10 @@ async def download_audio(
 
 
 @router.get("/models")
-async def list_models(request: Request):
+@limiter.limit("30/minute")
+async def list_models(request: Request, response: Response):
     """List available DiT models from the ACE-Step API."""
+    get_session_id(request, response)
     client = _get_client(request)
     try:
         return await client.list_models()
@@ -258,8 +277,10 @@ async def list_models(request: Request):
 
 
 @router.post("/random-sample")
-async def random_sample(request: Request, body: RandomSampleRequest = RandomSampleRequest()):
+@limiter.limit("10/minute")
+async def random_sample(request: Request, response: Response, body: RandomSampleRequest = RandomSampleRequest()):
     """Get random example generation parameters from the ACE-Step API."""
+    get_session_id(request, response)
     client = _get_client(request)
     try:
         params = {"sample_query": body.sample_query} if body.sample_query else {}
@@ -269,8 +290,10 @@ async def random_sample(request: Request, body: RandomSampleRequest = RandomSamp
 
 
 @router.post("/format")
-async def format_input(request: Request, body: FormatRequest):
+@limiter.limit("10/minute")
+async def format_input(request: Request, response: Response, body: FormatRequest):
     """LM-format prompt and/or lyrics via the ACE-Step API."""
+    get_session_id(request, response)
     client = _get_client(request)
     try:
         return await client.format_input(body.model_dump())
@@ -279,7 +302,8 @@ async def format_input(request: Request, body: FormatRequest):
 
 
 @router.delete("/jobs/{task_id}", status_code=204)
-async def cancel_job(task_id: str, request: Request):
+@limiter.limit("30/minute")
+async def cancel_job(task_id: str, request: Request, response: Response):
     """
     Cancel / discard a generation task locally.
 

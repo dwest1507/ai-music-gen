@@ -43,7 +43,7 @@ describe('AudioPlayer', () => {
     });
 
     it('handles download correctly and infers extension from parameter', () => {
-        render(<AudioPlayer audioUrl="https://api.example.com/audio?path=output_song.mp3" />);
+        render(<AudioPlayer audioUrl="https://api.example.com/audio/task123?index=0" />);
         
         const mockLink = {
             click: vi.fn(),
@@ -58,8 +58,8 @@ describe('AudioPlayer', () => {
         fireEvent.click(downloadButton);
 
         expect(spyCreateElement).toHaveBeenCalledWith('a');
-        expect(mockLink.href).toBe('https://api.example.com/audio?path=output_song.mp3');
-        expect(mockLink.download).toBe('output_song.mp3');
+        expect(mockLink.href).toBe('https://api.example.com/audio/task123?index=0');
+        expect(mockLink.download).toBe('music_task123.mp3');
         expect(mockLink.click).toHaveBeenCalled();
     });
 
