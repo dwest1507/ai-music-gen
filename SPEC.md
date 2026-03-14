@@ -538,7 +538,7 @@ NEXT_PUBLIC_API_URL=http://localhost:8000
   - `JobStatus` — test polling behavior with mocked API
   - `AudioPlayer` — test MP3/WAV format handling
 
-- [ ] **Integration testing**
+- [X] **Integration testing**
   - End-to-end flow: submit → poll → download (with mocked ACE-Step API; no costs incurred)
 
 ### Phase 4: Infrastructure & CI/CD
@@ -547,7 +547,7 @@ NEXT_PUBLIC_API_URL=http://localhost:8000
   - Remove Modal deployment workflow (now managed by `ACE-Step-1.5-modal` repo)
   - Update backend CI to remove Redis service in test jobs
 
-- [ ] **Update/Create documentation**
+- [x] **Update/Create documentation**
   - Update `README.md` with new architecture
   - Create `API_USAGE.md` within the docs folder to reflect new endpoints
   - Create `MANUAL_DEPLOYMENT.md` within the docs folder to remove Redis setup
