@@ -93,7 +93,7 @@ export function MusicGeneratorForm({ onJobCreated }: MusicGeneratorFormProps) {
                 body: JSON.stringify(payload),
             });
 
-            onJobCreated(data.task_id || (data as any).job_id); // Support legacy name if needed
+            onJobCreated(data.task_id || data.job_id || ""); // Support legacy name if needed
         } catch (err: unknown) {
             if (err instanceof z.ZodError) {
                 setError(err.issues[0].message);

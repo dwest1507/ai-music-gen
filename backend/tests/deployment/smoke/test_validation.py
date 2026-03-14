@@ -4,7 +4,6 @@ Smoke tests for input validation.
 These tests verify the API properly validates inputs without actually processing jobs.
 """
 import pytest
-import httpx
 
 
 @pytest.mark.fast

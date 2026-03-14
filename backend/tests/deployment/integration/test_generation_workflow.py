@@ -77,7 +77,7 @@ def test_complete_generation_workflow(api_url, session, test_prompt, cleanup_job
             assert content_type.startswith("audio/"), f"Expected audio content type, got {content_type}"
             
             print(f"✓ Audio downloaded: {len(audio_data)} bytes")
-            print(f"\n✅ Complete workflow test passed!")
+            print("\n✅ Complete workflow test passed!")
             break
             
         elif final_status == "failed":

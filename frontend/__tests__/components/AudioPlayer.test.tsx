@@ -49,10 +49,10 @@ describe('AudioPlayer', () => {
             click: vi.fn(),
             href: '',
             download: '',
-        } as any;
+        } as unknown as HTMLAnchorElement;
         const spyCreateElement = vi.spyOn(document, 'createElement').mockReturnValue(mockLink);
-        const spyAppendChild = vi.spyOn(document.body, 'appendChild').mockImplementation(() => null as any);
-        const spyRemoveChild = vi.spyOn(document.body, 'removeChild').mockImplementation(() => null as any);
+        vi.spyOn(document.body, 'appendChild').mockImplementation((node) => node);
+        vi.spyOn(document.body, 'removeChild').mockImplementation((node) => node);
 
         const downloadButton = screen.getByRole('button', { name: /Download/i });
         fireEvent.click(downloadButton);
@@ -70,10 +70,10 @@ describe('AudioPlayer', () => {
             click: vi.fn(),
             href: '',
             download: '',
-        } as any;
+        } as unknown as HTMLAnchorElement;
         vi.spyOn(document, 'createElement').mockReturnValue(mockLink);
-        vi.spyOn(document.body, 'appendChild').mockImplementation(() => null as any);
-        vi.spyOn(document.body, 'removeChild').mockImplementation(() => null as any);
+        vi.spyOn(document.body, 'appendChild').mockImplementation((node) => node);
+        vi.spyOn(document.body, 'removeChild').mockImplementation((node) => node);
 
         const downloadButton = screen.getByRole('button', { name: /Download/i });
         fireEvent.click(downloadButton);

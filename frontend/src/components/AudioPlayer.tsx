@@ -79,7 +79,7 @@ export function AudioPlayer({ audioUrl, className }: AudioPlayerProps) {
                 const pathParts = pathParam.split("/");
                 filename = pathParts[pathParts.length - 1];
             }
-        } catch (e) {
+        } catch {
             // Fallback formats
             if (audioUrl.includes("wav")) filename = "generated-music.wav";
             else if (audioUrl.includes("flac")) filename = "generated-music.flac";

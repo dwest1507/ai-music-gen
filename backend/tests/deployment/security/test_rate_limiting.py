@@ -4,8 +4,6 @@ Security tests for rate limiting.
 These tests verify that rate limiting is properly enforced.
 """
 import pytest
-import httpx
-import time
 
 
 @pytest.mark.fast

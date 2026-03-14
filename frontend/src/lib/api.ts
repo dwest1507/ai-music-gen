@@ -73,6 +73,7 @@ export interface GenerateResponse {
     task_id: string;
     status: string;
     queue_position?: number;
+    job_id?: string;
 }
 
 export interface JobMetadata {
@@ -80,9 +81,10 @@ export interface JobMetadata {
     lyrics?: string;
     bpm?: number;
     duration?: number;
+    genre?: string;
     key_scale?: string;
     time_signature?: string;
-    [key: string]: any;
+    [key: string]: unknown;
 }
 
 export interface JobResponse {

@@ -22,7 +22,7 @@ def test_session_cookie_created(api_url):
         assert "session_id" in session.cookies or "session_id" in response.cookies, \
             "Session cookie was not created"
         
-        print(f"\n✓ Session cookie created")
+        print("\n✓ Session cookie created")
 
 
 @pytest.mark.fast
@@ -49,21 +49,21 @@ def test_session_isolation(api_url, test_prompt):
         # Session 1 can access the job
         response = session1.get(f"{api_url}/api/jobs/{job_id}")
         assert response.status_code == 200, "Session 1 should be able to access its own job"
-        print(f"✓ Session 1 can access its job")
+        print("✓ Session 1 can access its job")
         
         # Session 2 tries to access Session 1's job
         response = session2.get(f"{api_url}/api/jobs/{job_id}")
         assert response.status_code == 404, \
             f"Session 2 should NOT be able to access Session 1's job (got {response.status_code})"
-        print(f"✓ Session 2 correctly denied access (404/403)")
+        print("✓ Session 2 correctly denied access (404/403)")
         
         # Session 2 tries to download Session 1's audio (need path out of task if completed, but we can try arbitrary)
         response = session2.get(f"{api_url}/api/audio/{job_id}?path=anything")
         assert response.status_code == 404, \
             f"Session 2 should NOT be able to download Session 1's audio (got {response.status_code})"
-        print(f"✓ Session 2 correctly denied audio download (404/403)")
+        print("✓ Session 2 correctly denied audio download (404/403)")
         
-        print(f"\n✅ Session isolation working correctly!")
+        print("\n✅ Session isolation working correctly!")
 
 
 @pytest.mark.fast
@@ -86,7 +86,7 @@ def test_cannot_access_job_without_cookie(api_url, test_prompt):
         assert response.status_code in [403, 404], \
             f"Request without cookie should be denied (got {response.status_code})"
         
-        print(f"\n✓ Access denied without session cookie")
+        print("\n✓ Access denied without session cookie")
 
 
 @pytest.mark.fast
@@ -136,4 +136,4 @@ def test_cannot_cancel_other_users_jobs(api_url, test_prompt):
         assert response.status_code in [204, 403, 404], \
             f"Session 2 cancel returned (got {response.status_code})"
         
-        print(f"\n✓ Checked other user cancel endpoint")
+        print("\n✓ Checked other user cancel endpoint")

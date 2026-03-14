@@ -1,7 +1,6 @@
-import pytest
 import sys
 import os
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 from httpx import AsyncClient, ASGITransport
 
 # Add the backend directory to sys.path

@@ -121,7 +121,7 @@ export function JobStatus({ jobId }: JobStatusProps) {
                 
                 {job.metadata && (job.metadata.prompt || job.metadata.genre) && (
                     <CardDescription className="italic line-clamp-2">
-                        "{job.metadata.prompt}"
+                        &quot;{job.metadata.prompt}&quot;
                     </CardDescription>
                 )}
             </CardHeader>

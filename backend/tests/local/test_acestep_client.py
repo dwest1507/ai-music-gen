@@ -1,5 +1,5 @@
 import pytest
-from httpx import Response, TimeoutException, ConnectError
+from httpx import Response, TimeoutException
 from unittest.mock import AsyncMock
 from app.services.acestep_client import ACEStepClient, ACEStepError
 

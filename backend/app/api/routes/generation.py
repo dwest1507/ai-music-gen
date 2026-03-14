@@ -1,13 +1,15 @@
 from fastapi import APIRouter, HTTPException, Query, Request, Response, status
-from fastapi.responses import JSONResponse
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, field_validator
 from typing import Optional
 import secrets
-import logging
 
 from app.core.config import settings
 from app.core.limiter import limiter
 from app.services.acestep_client import ACEStepClient, ACEStepError
+
+router = APIRouter()
+SESSION_COOKIE_NAME = "session_id"
 
 # ── Pydantic models ──────────────────────────────────────────────
 
@@ -203,8 +205,6 @@ async def get_job_status(task_id: str, request: Request, response: Response):
 
     return response_data
 
-
-from fastapi.responses import StreamingResponse
 
 @router.get("/audio/{task_id}")
 @limiter.limit("20/minute")
