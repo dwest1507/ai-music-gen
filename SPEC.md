@@ -338,6 +338,23 @@ frontend/src/
 - Supports MP3/WAV depending on requested config.
 - Handles multi-track downloads when `batch_size > 1`.
 
+### 5.4 CI/CD Architecture
+
+The repository utilizes GitHub Actions for Continuous Integration (CI) and native integrations (Vercel, Railway) for Continuous Deployment (CD).
+
+#### 5.4.1 Continuous Integration (CI)
+GitHub Actions are configured with path filtering to run workflows independently for the frontend and backend:
+- **Backend CI**: Triggered on `backend/**` changes. Runs `uv run ruff check .` for linting, `uv run bandit -r app/` for security scanning, and `uv run pytest tests/` for async testing.
+- **Frontend CI**: Triggered on `frontend/**` changes. Runs ESLint, Vitest, and a production build verification step (`npm run build`).
+
+#### 5.4.2 Continuous Deployment (CD)
+Deployments pull from the `main` branch upon successful CI checks.
+- **Frontend (Vercel)**: Promotes to production upon CI success. Pull requests trigger preview environments. Vercel Authorization restricts fork PR deployments to prevent untrusted code execution.
+- **Backend (Railway)**: Railway PR Pipeline provisions isolated backend instances. Preview environments for public repo forks are disabled by default and require manual review before triggering.
+
+#### 5.4.3 GitHub Repository Configuration
+Branch protection rules on `main` enforce that no PRs can be merged without passing status checks for both `Backend CI` and `Frontend CI`.
+
 ---
 
 ## 6. Environment Variables
