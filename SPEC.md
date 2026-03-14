@@ -504,11 +504,11 @@ NEXT_PUBLIC_API_URL=http://localhost:8000
 
 ### Phase 2: Frontend Refactoring
 
-- [ ] **Update `frontend/src/lib/api.ts`**
+- [X] **Update `frontend/src/lib/api.ts`**
   - Update response types to match new backend API shape
   - Add types for task metadata (BPM, key, etc.)
 
-- [ ] **Refactor `frontend/src/components/MusicGeneratorForm.tsx`**
+- [X] **Refactor `frontend/src/components/MusicGeneratorForm.tsx`**
   - Add Simple/Advanced mode toggle
   - Add optional lyrics textarea
   - Add vocal language selector
@@ -516,30 +516,30 @@ NEXT_PUBLIC_API_URL=http://localhost:8000
   - Update Zod validation schema for expanded fields
   - Update duration input to support broader range
 
-- [ ] **Update `frontend/src/components/JobStatus.tsx`**
+- [X] **Update `frontend/src/components/JobStatus.tsx`**
   - Update polling to match new response shape
   - Display returned metadata (BPM, key, duration, etc.)
   - Update `audio_url` handling for proxied download path
 
-- [ ] **Update `frontend/src/components/AudioPlayer.tsx`**
+- [X] **Update `frontend/src/components/AudioPlayer.tsx`**
   - Support MP3 download filename (detect from URL or response)
   - Update download handler for new audio proxy endpoint
   - Handle multiple audio results (when `batch_size > 1`)
 
 ### Phase 3: Testing
 
-- [ ] **Backend unit tests**
+- [X] **Backend unit tests**
   - `acestep_client.py` — mock HTTP responses, test all methods
   - `generation.py` — test route validation, session handling, rate limiting
   - Test error handling for all ACE-Step API failure modes
 
-- [ ] **Frontend component tests**
+- [X] **Frontend component tests**
   - `MusicGeneratorForm` — test Simple/Advanced mode, form validation
   - `JobStatus` — test polling behavior with mocked API
   - `AudioPlayer` — test MP3/WAV format handling
 
 - [ ] **Integration testing**
-  - End-to-end flow: submit → poll → download (with mocked ACE-Step API)
+  - End-to-end flow: submit → poll → download (with mocked ACE-Step API; no costs incurred)
 
 ### Phase 4: Infrastructure & CI/CD
 
@@ -547,11 +547,11 @@ NEXT_PUBLIC_API_URL=http://localhost:8000
   - Remove Modal deployment workflow (now managed by `ACE-Step-1.5-modal` repo)
   - Update backend CI to remove Redis service in test jobs
 
-- [ ] **Update documentation**
+- [ ] **Update/Create documentation**
   - Update `README.md` with new architecture
-  - Update `API_USAGE.md` to reflect new endpoints
-  - Update `MANUAL_DEPLOYMENT.md` to remove Redis setup
-  - Update `TESTING.md` to reflect new test strategy
+  - Create `API_USAGE.md` within the docs folder to reflect new endpoints
+  - Create `MANUAL_DEPLOYMENT.md` within the docs folder to remove Redis setup
+  - Create `TESTING.md` within the docs folder to reflect new test strategy
 
 ---
 

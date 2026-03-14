@@ -61,7 +61,30 @@ export function AudioPlayer({ audioUrl, className }: AudioPlayerProps) {
     const handleDownload = () => {
         const link = document.createElement("a");
         link.href = audioUrl;
-        link.download = "generated-music.wav";
+        
+        let filename = "generated-music.mp3";
+        try {
+            // Try to extract from ?path= query param
+            const urlObj = new URL(audioUrl, window.location.origin);
+            const pathParam = urlObj.searchParams.get("path");
+            if (pathParam && pathParam.includes(".")) {
+                const parts = pathParam.split("/");
+                filename = parts[parts.length - 1];
+            } else {
+                // Try from base URL
+                const parts = urlObj.pathname.split("/");
+                const name = parts[parts.length - 1];
+                if (name && name.includes(".")) {
+                    filename = name;
+                }
+            }
+        } catch (e) {
+            // Fallback formats
+            if (audioUrl.includes(".wav")) filename = "generated-music.wav";
+            else if (audioUrl.includes(".flac")) filename = "generated-music.flac";
+        }
+        
+        link.download = filename;
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
