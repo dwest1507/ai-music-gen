@@ -109,21 +109,25 @@ class ACEStepClient:
         except httpx.ConnectError:
             raise ACEStepError("Cannot reach music generation service.", 503)
 
-    async def download_audio(self, path: str) -> httpx.Response:
+    async def download_audio_stream(self, path: str) -> httpx.Response:
         """
         Stream-download an audio file from the ACE-Step API.
 
-        GET /v1/audio?path=<path>  →  returns raw audio bytes.
-        Returns the httpx.Response so the caller can stream it.
+        GET /v1/audio?path=<path>  →  returns a streaming response.
+        The caller MUST ensure they iterate it and close it.
         """
         try:
-            resp = await self.client.get(
+            req = self.client.build_request(
+                "GET",
                 f"{self.base_url}/v1/audio",
                 params={"path": path},
                 headers=self._headers(),
                 timeout=AUDIO_DOWNLOAD_TIMEOUT,
             )
+            resp = await self.client.send(req, stream=True)
             if resp.status_code != 200:
+                await resp.aread()
+                resp.close()
                 raise ACEStepError("Failed to download audio.", resp.status_code)
             return resp
         except httpx.TimeoutException:

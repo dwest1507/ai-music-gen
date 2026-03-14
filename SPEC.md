@@ -6,38 +6,13 @@ A portfolio project demonstrating full-stack AI engineering: a web-based music g
 
 ## 1. Background & Motivation
 
-The ACE-Step v1.5 model has been successfully deployed to Modal as a standalone REST API (repo: `ACE-Step-1.5-modal`). This API provides its own asynchronous task queue, audio storage, and download endpoints — everything needed to run inference at scale.
+The ACE-Step v1.5 model is deployed to Modal as a standalone REST API (repo: `ACE-Step-1.5-modal`). This API provides its own asynchronous task queue, audio storage, and download endpoints — everything needed to run inference at scale.
 
-The `ai-music-gen` backend was originally designed to manage its own job queue (Redis + RQ), invoke Modal via the Python SDK (`modal.Function.from_name`), store generated audio in S3/R2, and serve files back to the frontend. **All of these responsibilities are now handled by the deployed ACE-Step API itself.**
-
-This specification defines how the `ai-music-gen` backend and frontend should be refactored to act as a thin orchestration layer on top of the ACE-Step Modal API, dramatically simplifying the architecture and eliminating unnecessary infrastructure.
+This specification documents the architecture of the `ai-music-gen` backend and frontend, which act as a thin orchestration layer on top of the ACE-Step Modal API. This approach provides a resilient and simple architecture by avoiding redundant message queues or storage.
 
 ---
 
 ## 2. System Architecture
-
-### 2.1 Current Architecture (being replaced)
-
-```mermaid
-flowchart LR
-    Browser --> NextJS["Next.js Frontend<br/>(Vercel)"]
-    NextJS --> FastAPI["FastAPI Backend<br/>(Railway)"]
-    FastAPI --> Redis["Redis + RQ<br/>(Job Queue)"]
-    FastAPI --> ModalSDK["Modal Python SDK"]
-    ModalSDK --> ACEStep["ACE-Step on Modal<br/>(GPU)"]
-    ACEStep --> FastAPI
-    FastAPI --> S3["S3/R2 Storage"]
-    FastAPI --> Browser
-```
-
-**Problems:**
-- Redis + RQ is redundant — the ACE-Step API has its own task queue
-- The Modal Python SDK calls a custom `MusicGenerator` class, not the deployed REST API
-- S3/R2 storage is unnecessary — the ACE-Step API stores and serves audio files
-- A separate `worker` Docker container is required for RQ
-- `backend/modal_app.py` is a separate Modal deployment, not the deployed `ACE-Step-1.5-modal` API
-
-### 2.2 New Architecture
 
 ```mermaid
 flowchart LR
@@ -47,11 +22,11 @@ flowchart LR
     ACEStepAPI --> Browser
 ```
 
-**Key changes:**
-- Backend becomes a **stateless HTTP proxy** to the ACE-Step Modal API
-- **No Redis**, **no RQ**, **no S3/R2**, **no Modal Python SDK**, **no worker process**
-- Backend proxies audio downloads from Modal (to avoid CORS and keep the Modal URL private)
-- Session-based rate limiting and input validation remain in the backend
+**Key Architecture Features:**
+- Backend acts as a **stateless HTTP proxy** to the ACE-Step Modal API.
+- All heavy lifting (job queues, storage) is delegated to the ACE-Step API.
+- Backend proxies audio downloads from Modal to avoid CORS issues and keep the internal Modal URL private.
+- Session-based rate limiting and input validation are performed at the backend layer.
 
 ---
 
@@ -161,8 +136,8 @@ Supports optional API key via:
 | NFR-4 | All secrets stored in environment variables, never in code | Must |
 | NFR-5 | CORS limited to frontend domain only | Must |
 | NFR-6 | Session IDs generated cryptographically (UUID4 or `secrets.token_urlsafe`) | Must |
-| NFR-7 | Backend stateless — no Redis, no filesystem state | Must |
-| NFR-8 | Cold start time acceptable with Railway auto-sleep | Should |
+| NFR-7 | Backend stateless — no filesystem state | Must |
+| NFR-8 | Cold start time acceptable with auto-sleep capabilities | Should |
 | NFR-9 | Graceful degradation when ACE-Step API is unavailable | Should |
 | NFR-10 | HTTPS enforced on all production endpoints | Must |
 
@@ -190,9 +165,6 @@ Supports optional API key via:
 | GPU Inference | ACE-Step v1.5 REST API | Modal | ~$30/mo free credits |
 | CI/CD | GitHub Actions | GitHub | Free |
 
-> [!IMPORTANT]
-> **Removed from stack:** Redis, RQ, S3/R2 storage, Modal Python SDK, RQ Worker container
-
 ### 5.2 Backend Design
 
 The backend is a **stateless FastAPI application** that:
@@ -202,7 +174,7 @@ The backend is a **stateless FastAPI application** that:
 4. Returns task IDs and status to the frontend
 5. Proxies audio file downloads from Modal
 
-#### 5.2.1 Backend Directory Structure (Target)
+#### 5.2.1 Backend Directory Structure
 
 ```
 backend/
@@ -230,11 +202,9 @@ backend/
 | `FRONTEND_URL` | Frontend origin(s) for CORS | Yes |
 | `SESSION_SECRET` | Secret for session management | Yes |
 
-**Removed variables:** `REDIS_URL`, `MODAL_TOKEN_ID`, `MODAL_TOKEN_SECRET`, all `STORAGE_*` vars.
-
 #### 5.2.3 ACE-Step Client Service (`acestep_client.py`)
 
-A new module replacing `modal_client.py`, `job_queue.py`, and `storage.py`:
+Takes care of communicating with the model API:
 
 ```python
 # Responsibilities:
@@ -249,7 +219,7 @@ A new module replacing `modal_client.py`, `job_queue.py`, and `storage.py`:
 # - Error handling and retry logic
 ```
 
-#### 5.2.4 API Routes (`generation.py` — refactored)
+#### 5.2.4 API Routes (`generation.py`)
 
 | Backend Endpoint | Method | Maps To (ACE-Step) | Description |
 |------------------|--------|---------------------|-------------|
@@ -330,7 +300,7 @@ The backend uses the `path` query parameter (from the task result's `file` field
 
 ### 5.3 Frontend Design
 
-#### 5.3.1 Frontend Directory Structure (Target)
+#### 5.3.1 Frontend Directory Structure
 
 ```
 frontend/src/
@@ -339,76 +309,40 @@ frontend/src/
 │   ├── layout.tsx                 # Root layout
 │   └── globals.css                # Global styles
 ├── components/
-│   ├── MusicGeneratorForm.tsx     # Generation form (refactored)
-│   ├── AudioPlayer.tsx            # Audio player (minor changes)
-│   ├── JobStatus.tsx              # Status display (refactored)
+│   ├── MusicGeneratorForm.tsx     # Generation form
+│   ├── AudioPlayer.tsx            # Audio player
+│   ├── JobStatus.tsx              # Status display
 │   └── ui/                       # Shared UI primitives
 ├── lib/
-│   ├── api.ts                     # API client (refactored)
+│   ├── api.ts                     # API client
 │   ├── session.ts                 # Session management
 │   └── utils.ts                   # Utilities
 ```
 
-#### 5.3.2 Key Frontend Changes
+#### 5.3.2 Frontend Components
 
-**`api.ts`** — Update response types and endpoint paths. No structural change needed since the backend API shape stays similar.
+**`api.ts`** — API client mapping to backend API structure. Forms typed requests and parses typed responses.
 
-**`MusicGeneratorForm.tsx`** — Expand form fields:
-- Add optional lyrics textarea
-- Add vocal language selector
-- Add "Simple / Advanced" mode toggle
-- Advanced mode exposes: BPM, key/scale, time signature, inference steps
-- Update validation schema to match new Pydantic model
-- Update duration options to allow custom values or broader range
+**`MusicGeneratorForm.tsx`** — Provides:
+- Optional lyrics textarea
+- Vocal language selector
+- "Simple / Advanced" mode toggle
+- Advanced mode mapping: BPM, key/scale, time signature, inference steps
 
-**`JobStatus.tsx`** — Update status mapping:
-- The status values remain the same (`queued`, `processing`, `completed`, `failed`), so polling logic is largely unchanged
-- Update `audio_url` handling to use new proxy path format
-- Parse and display returned metadata (BPM, key, etc.)
+**`JobStatus.tsx`** — Maps states:
+- Handles polling cycle against backend for task status updates.
+- Parses metadata for completed/failed statuses.
+- Loads audio from proxy endpoint upon finish.
 
-**`AudioPlayer.tsx`** — Minor update:
-- Support MP3 format (currently hardcoded to `.wav` for download filename)
-- Detect format from response headers or URL
+**`AudioPlayer.tsx`** — Maps audio output:
+- Supports MP3/WAV depending on requested config.
+- Handles multi-track downloads when `batch_size > 1`.
 
 ---
 
-## 6. Files to Delete
+## 6. Environment Variables
 
-These files become unnecessary after the refactoring:
-
-| File | Reason |
-|------|--------|
-| `backend/app/services/modal_client.py` | Replaced by `acestep_client.py` |
-| `backend/app/services/job_queue.py` | Redis/RQ no longer needed |
-| `backend/app/services/storage.py` | S3/R2 no longer needed |
-| `backend/modal_app.py` | Custom Modal deployment replaced by ACE-Step-1.5-modal |
-
----
-
-## 7. Dependencies to Remove
-
-### Backend (`requirements.txt`)
-
-| Package | Reason |
-|---------|--------|
-| `redis` | No more Redis job queue |
-| `rq` | No more RQ workers |
-| `modal` | No more Modal Python SDK calls |
-| `boto3` | No more S3/R2 storage |
-| `requests` | Replaced by `httpx` (async) |
-
-### Docker (`docker-compose.yml`)
-
-| Service | Reason |
-|---------|--------|
-| `redis` | No more Redis |
-| `worker` | No more RQ worker |
-
----
-
-## 8. Environment Variables
-
-### New `.env.example`
+### `.env.example`
 
 ```bash
 # ACE-Step Modal API
@@ -427,7 +361,7 @@ NEXT_PUBLIC_API_URL=http://localhost:8000
 
 ---
 
-## 9. Error Handling
+## 7. Error Handling
 
 ### Backend → ACE-Step API Errors
 
@@ -451,113 +385,18 @@ NEXT_PUBLIC_API_URL=http://localhost:8000
 
 ---
 
-## 10. Task Checklist
+## 8. Development Roadmap & Recommended Improvements
 
-### Phase 1: Backend Refactoring
+### 8.1 System Improvements (Implemented)
+These improvements were identified during a system design review and implemented to enhance resilience and scalability:
+- **True Audio Streaming**: The `/api/audio/{task_id}` endpoint utilizes FastAPI's `StreamingResponse` alongside `httpx.AsyncClient.stream()` to pipe audio chunks directly from Modal to the frontend, preventing OOM errors from loading entire files into backend memory.
+- **Session-based Rate Limiting**: The `slowapi` rate limiter utilizes the cryptographically secure `session_id` cookie rather than IP addresses. This aligns with "per session" rate limiting (NFR-2) and prevents issues on NAT-sharing networks.
+- **Frontend Polling Backoff & Timeout**: The `JobStatus` polling mechanism implements an exponential backoff after the first minute and includes an upper-bound timeout to prevent infinite polling.
+- **Duplicate Submission Guard**: The frontend generation form includes idempotency and duplicate submission guarding to prevent overlapping expensive inference requests.
 
-- [x] **Create `backend/app/services/acestep_client.py`**
-  - Async HTTP client using `httpx.AsyncClient`
-  - Methods: `submit_task()`, `query_result()`, `download_audio()`, `health_check()`, `list_models()`, `get_random_sample()`, `format_input()`
-  - Error handling, timeouts, and optional API key auth
-  - Configurable base URL from environment variable
+### 8.2 Post-MVP Features
 
-- [x] **Update `backend/app/core/config.py`**
-  - Add `ACESTEP_API_URL` and `ACESTEP_API_KEY`
-  - Remove `REDIS_URL`, `MODAL_TOKEN_ID`, `MODAL_TOKEN_SECRET`, all `STORAGE_*` variables
-
-- [x] **Refactor `backend/app/api/routes/generation.py`**
-  - Update `GenerationRequest` Pydantic model with expanded fields (lyrics, vocal_language, audio_format, thinking, bpm, key_scale, time_signature, etc.)
-  - Update `POST /api/generate` to call `acestep_client.submit_task()`
-  - Update `GET /api/jobs/{task_id}` to call `acestep_client.query_result()`
-  - Update `GET /api/audio/{task_id}` to proxy via `acestep_client.download_audio()`
-  - Add `GET /api/models` route
-  - Add `POST /api/random-sample` route
-  - Add `POST /api/format` route
-  - Keep session-based rate limiting and input validation
-
-- [x] **Update `backend/app/main.py`**
-  - Remove RQ-related imports/middleware
-  - Add `httpx.AsyncClient` lifecycle management (startup/shutdown events or lifespan)
-
-- [x] **Delete obsolete files**
-  - `backend/app/services/modal_client.py`
-  - `backend/app/services/job_queue.py`
-  - `backend/app/services/storage.py`
-  - `backend/modal_app.py`
-
-- [x] **Update `backend/requirements.txt`**
-  - Remove: `redis`, `rq`, `modal`, `boto3`, `requests`
-  - Ensure `httpx` is present (already included)
-  - Add `python-dotenv` if not present (already included)
-
-- [x] **Update `docker-compose.yml`**
-  - Remove `redis` service
-  - Remove `worker` service
-  - Remove `audio_temp` volume
-  - Update `backend` environment variables
-
-- [x] **Update `.env.example`**
-  - Replace Modal/Redis/Storage variables with ACE-Step API variables
-
-- [x] **Update `Dockerfile`**
-  - Remove any Redis/RQ-specific configuration
-
-### Phase 2: Frontend Refactoring
-
-- [X] **Update `frontend/src/lib/api.ts`**
-  - Update response types to match new backend API shape
-  - Add types for task metadata (BPM, key, etc.)
-
-- [X] **Refactor `frontend/src/components/MusicGeneratorForm.tsx`**
-  - Add Simple/Advanced mode toggle
-  - Add optional lyrics textarea
-  - Add vocal language selector
-  - Advanced mode: add BPM, key/scale, time signature, inference steps inputs
-  - Update Zod validation schema for expanded fields
-  - Update duration input to support broader range
-
-- [X] **Update `frontend/src/components/JobStatus.tsx`**
-  - Update polling to match new response shape
-  - Display returned metadata (BPM, key, duration, etc.)
-  - Update `audio_url` handling for proxied download path
-
-- [X] **Update `frontend/src/components/AudioPlayer.tsx`**
-  - Support MP3 download filename (detect from URL or response)
-  - Update download handler for new audio proxy endpoint
-  - Handle multiple audio results (when `batch_size > 1`)
-
-### Phase 3: Testing
-
-- [X] **Backend unit tests**
-  - `acestep_client.py` — mock HTTP responses, test all methods
-  - `generation.py` — test route validation, session handling, rate limiting
-  - Test error handling for all ACE-Step API failure modes
-
-- [X] **Frontend component tests**
-  - `MusicGeneratorForm` — test Simple/Advanced mode, form validation
-  - `JobStatus` — test polling behavior with mocked API
-  - `AudioPlayer` — test MP3/WAV format handling
-
-- [X] **Integration testing**
-  - End-to-end flow: submit → poll → download (with mocked ACE-Step API; no costs incurred)
-
-### Phase 4: Infrastructure & CI/CD
-
-- [ ] **Update GitHub Actions workflows**
-  - Remove Modal deployment workflow (now managed by `ACE-Step-1.5-modal` repo)
-  - Update backend CI to remove Redis service in test jobs
-
-- [x] **Update/Create documentation**
-  - Update `README.md` with new architecture
-  - Create `API_USAGE.md` within the docs folder to reflect new endpoints
-  - Create `MANUAL_DEPLOYMENT.md` within the docs folder to remove Redis setup
-  - Create `TESTING.md` within the docs folder to reflect new test strategy
-
----
-
-## 11. Future Considerations (Post-MVP)
-
-These are out of scope for the refactoring but should be designed for:
+These features extend the base architecture with deeper functionality:
 
 - **User Accounts & Persistence**: NextAuth.js + PostgreSQL for saved generations
 - **History**: Store task IDs and metadata per user for a generation history view  

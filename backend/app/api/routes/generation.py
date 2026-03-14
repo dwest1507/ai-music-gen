@@ -205,17 +205,19 @@ async def get_job_status(task_id: str, request: Request):
     return response_data
 
 
+from fastapi.responses import StreamingResponse
+
 @router.get("/audio/{task_id}")
 async def download_audio(
     task_id: str,
     request: Request,
     path: str = Query(..., description="Audio file path from task result"),
 ):
-    """Proxy-download generated audio from the ACE-Step API."""
+    """Proxy-download generated audio from the ACE-Step API via a stream."""
     client = _get_client(request)
 
     try:
-        resp = await client.download_audio(path)
+        resp = await client.download_audio_stream(path)
     except ACEStepError as e:
         raise HTTPException(status_code=e.status_code, detail=e.message)
 
@@ -231,8 +233,15 @@ async def download_audio(
     ext = ext_map.get(content_type, "mp3")
     filename = f"music_{task_id}.{ext}"
 
-    return Response(
-        content=resp.content,
+    async def stream_generator():
+        try:
+            async for chunk in resp.aiter_bytes(chunk_size=65536):
+                yield chunk
+        finally:
+            await resp.aclose()
+
+    return StreamingResponse(
+        stream_generator(),
         media_type=content_type,
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )

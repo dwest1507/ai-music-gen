@@ -51,11 +51,23 @@ export function MusicGeneratorForm({ onJobCreated }: MusicGeneratorFormProps) {
     
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [lastSubmitTime, setLastSubmitTime] = useState(0);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+
+        if (isLoading) return; // Prevent concurrent submissions
+
+        const now = Date.now();
+        // 5 second cooldown to prevent rate limit hammering or duplicate accidental spawns
+        if (now - lastSubmitTime < 5000) {
+            setError("Please wait a few seconds before generating another track.");
+            return;
+        }
+
         setIsLoading(true);
         setError(null);
+        setLastSubmitTime(now);
 
         try {
             // Validate

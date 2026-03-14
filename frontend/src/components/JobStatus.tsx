@@ -19,33 +19,62 @@ export function JobStatus({ jobId }: JobStatusProps) {
 
     // Poll for job updates
     useEffect(() => {
-        let intervalId: NodeJS.Timeout;
+        let timeoutId: NodeJS.Timeout;
+        let isMounted = true;
+        const startTime = Date.now();
+        const MAX_POLLING_TIME = 10 * 60 * 1000; // 10 minutes timeout
 
         const fetchJobStatus = async () => {
+            if (!isMounted) return;
+
+            const elapsed = Date.now() - startTime;
+            if (elapsed > MAX_POLLING_TIME) {
+                setError("Generation timed out. Please try again.");
+                setIsPolling(false);
+                return;
+            }
+
             try {
                 const data = await apiFetch<JobResponse>(`/api/jobs/${jobId}`);
-                setJob(data);
+                if (!isMounted) return;
 
+                setJob(data);
                 if (data.status === "completed" || data.status === "failed") {
                     setIsPolling(false);
-                    clearInterval(intervalId);
+                    return;
                 }
             } catch (err: unknown) {
                 console.error("Polling error:", err);
+                if (!isMounted) return;
+
                 if (err instanceof Error && "status" in err && (err as { status: number }).status === 404) {
                     setError("Job not found");
                     setIsPolling(false);
-                    clearInterval(intervalId);
+                    return;
                 }
+            }
+
+            // Calculate next delay: < 1 min: 2s, < 2 min: 5s, > 2 min: 10s
+            let nextDelay = 2000;
+            if (elapsed > 120000) {
+                nextDelay = 10000;
+            } else if (elapsed > 60000) {
+                nextDelay = 5000;
+            }
+
+            if (isPolling && isMounted) {
+                timeoutId = setTimeout(fetchJobStatus, nextDelay);
             }
         };
 
         if (isPolling) {
-            fetchJobStatus(); // Initial fetch
-            intervalId = setInterval(fetchJobStatus, 2000); // Poll every 2s
+            fetchJobStatus();
         }
 
-        return () => clearInterval(intervalId);
+        return () => {
+            isMounted = false;
+            clearTimeout(timeoutId);
+        };
     }, [jobId, isPolling]);
 
     if (error) {
