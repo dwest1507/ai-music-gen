@@ -61,7 +61,31 @@ export function AudioPlayer({ audioUrl, className }: AudioPlayerProps) {
     const handleDownload = () => {
         const link = document.createElement("a");
         link.href = audioUrl;
-        link.download = "generated-music.wav";
+        
+        let filename = "generated-music.mp3";
+        try {
+            const urlObj = new URL(audioUrl, window.location.origin);
+            
+            // Try to use the task ID from the URL path: /api/audio/{task_id}
+            const parts = urlObj.pathname.split("/");
+            const taskId = parts[parts.length - 1];
+            if (taskId && taskId !== "audio") {
+                filename = `music_${taskId}.mp3`;
+            }
+
+            // Fallback: Try to extract from ?path= query param if still present
+            const pathParam = urlObj.searchParams.get("path");
+            if (pathParam && pathParam.includes(".")) {
+                const pathParts = pathParam.split("/");
+                filename = pathParts[pathParts.length - 1];
+            }
+        } catch {
+            // Fallback formats
+            if (audioUrl.includes("wav")) filename = "generated-music.wav";
+            else if (audioUrl.includes("flac")) filename = "generated-music.flac";
+        }
+        
+        link.download = filename;
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);

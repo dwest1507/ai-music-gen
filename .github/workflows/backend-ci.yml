@@ -1,0 +1,47 @@
+name: Backend CI
+
+on:
+  push:
+    branches: [ "main" ]
+    paths:
+      - 'backend/**'
+  pull_request:
+    branches: [ "main" ]
+    paths:
+      - 'backend/**'
+
+defaults:
+  run:
+    working-directory: ./backend
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Setup uv
+      uses: astral-sh/setup-uv@v5
+      with:
+        version: "latest"
+        enable-cache: true
+        cache-dependency-glob: "backend/uv.lock"
+
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version-file: 'backend/.python-version'
+
+    - name: Install dependencies
+      run: uv sync --frozen
+
+    - name: Lint with Ruff
+      run: uv run ruff check .
+
+    - name: Security Scan with Bandit
+      run: uv run bandit -r app/
+
+    - name: Run tests with Pytest
+      run: uv run pytest tests/local/ -v

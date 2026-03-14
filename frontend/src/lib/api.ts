@@ -50,3 +50,48 @@ export async function apiFetch<T>(endpoint: string, options: FetchOptions = {}):
 
     return {} as T;
 }
+
+// --- Shared API Types ---
+
+export interface GenerateRequest {
+    prompt: string;
+    lyrics?: string;
+    duration?: number;
+    genre?: string;
+    vocal_language?: string;
+    audio_format?: string;
+    thinking?: boolean;
+    use_format?: boolean;
+    bpm?: number;
+    key_scale?: string;
+    time_signature?: string;
+    inference_steps?: number;
+    batch_size?: number;
+}
+
+export interface GenerateResponse {
+    task_id: string;
+    status: string;
+    queue_position?: number;
+    job_id?: string;
+}
+
+export interface JobMetadata {
+    prompt?: string;
+    lyrics?: string;
+    bpm?: number;
+    duration?: number;
+    genre?: string;
+    key_scale?: string;
+    time_signature?: string;
+    [key: string]: unknown;
+}
+
+export interface JobResponse {
+    task_id: string;
+    status: "queued" | "processing" | "completed" | "failed";
+    audio_url?: string;
+    audio_urls?: string[];
+    metadata?: JobMetadata;
+    error?: string;
+}
