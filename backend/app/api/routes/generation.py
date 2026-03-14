@@ -1,175 +1,281 @@
-from fastapi import APIRouter, HTTPException, Request, Response, status, Depends
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi import APIRouter, HTTPException, Query, Request, Response, status
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, field_validator
 from typing import Optional
 import secrets
 import logging
-from app.services.job_queue import job_queue
-from app.services.modal_client import generate_music_task
+
 from app.core.limiter import limiter
+from app.services.acestep_client import ACEStepClient, ACEStepError
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
 SESSION_COOKIE_NAME = "session_id"
 
+# ── Pydantic models ──────────────────────────────────────────────
+
+
 class GenerationRequest(BaseModel):
     prompt: str = Field(..., min_length=1, max_length=500)
-    duration: int = Field(60, ge=30, le=120)  # 30, 60, 120
+    lyrics: str = Field("", max_length=5000)
+    duration: float = Field(60, ge=10, le=600)
     genre: Optional[str] = None
-    
-    @field_validator('prompt')
+    vocal_language: str = Field("en")
+    audio_format: str = Field("mp3")
+    thinking: bool = Field(True)
+    use_format: bool = Field(False)
+    bpm: Optional[int] = Field(None, ge=30, le=300)
+    key_scale: Optional[str] = None
+    time_signature: Optional[str] = None
+    inference_steps: int = Field(8, ge=1, le=20)
+    batch_size: int = Field(1, ge=1, le=4)
+
+    @field_validator("prompt")
     @classmethod
     def validate_prompt_not_empty(cls, v: str) -> str:
-        """Ensure prompt is not empty or whitespace-only."""
         if not v or not v.strip():
-            raise ValueError('Prompt cannot be empty or whitespace-only')
-        return v.strip()  # Return trimmed prompt
+            raise ValueError("Prompt cannot be empty or whitespace-only")
+        return v.strip()
 
-class JobResponse(BaseModel):
-    job_id: str
+    @field_validator("audio_format")
+    @classmethod
+    def validate_audio_format(cls, v: str) -> str:
+        allowed = {"mp3", "wav", "flac"}
+        if v.lower() not in allowed:
+            raise ValueError(f"audio_format must be one of {allowed}")
+        return v.lower()
+
+
+class GenerationResponse(BaseModel):
+    task_id: str
     status: str
-    estimated_wait: int
+    queue_position: Optional[int] = None
+
+
+class FormatRequest(BaseModel):
+    prompt: Optional[str] = ""
+    lyrics: Optional[str] = ""
+
+
+class RandomSampleRequest(BaseModel):
+    """Optional parameters for random sample generation."""
+    sample_query: Optional[str] = ""
+
+
+# ── Helpers ──────────────────────────────────────────────────────
+
+
+def _get_client(request: Request) -> ACEStepClient:
+    """Retrieve the ACE-Step client from app state."""
+    return request.app.state.acestep_client
+
 
 def get_session_id(request: Request, response: Response) -> str:
     session_id = request.cookies.get(SESSION_COOKIE_NAME)
     if not session_id:
         session_id = secrets.token_urlsafe(32)
-        # Set strictly for subsequent requests, 
-        # but return it here so current request context has it
         response.set_cookie(
             key=SESSION_COOKIE_NAME,
             value=session_id,
             httponly=True,
-            secure=True, # Should be True in prod (HTTPS)
-            samesite="lax"
+            secure=True,
+            samesite="lax",
         )
     return session_id
 
-@router.post("/generate", response_model=JobResponse, status_code=status.HTTP_202_ACCEPTED)
+
+def _build_release_task_payload(gen_request: GenerationRequest) -> dict:
+    """Transform a GenerationRequest into the ACE-Step /release_task payload."""
+    prompt = gen_request.prompt
+    if gen_request.genre:
+        prompt = f"{gen_request.genre}. {prompt}"
+
+    lyrics = gen_request.lyrics if gen_request.lyrics else "[Instrumental]"
+
+    payload: dict = {
+        "prompt": prompt,
+        "lyrics": lyrics,
+        "audio_duration": gen_request.duration,
+        "thinking": gen_request.thinking,
+        "vocal_language": gen_request.vocal_language,
+        "audio_format": gen_request.audio_format,
+        "use_format": gen_request.use_format,
+        "inference_steps": gen_request.inference_steps,
+        "batch_size": gen_request.batch_size,
+    }
+
+    if gen_request.bpm is not None:
+        payload["bpm"] = gen_request.bpm
+    if gen_request.key_scale:
+        payload["key_scale"] = gen_request.key_scale
+    if gen_request.time_signature:
+        payload["time_signature"] = gen_request.time_signature
+
+    return payload
+
+
+# Status code mapping: ACE-Step → user-facing
+_STATUS_MAP = {
+    0: "processing",
+    1: "completed",
+    2: "failed",
+}
+
+
+# ── Routes ────────────────────────────────────────────────────────
+
+
+@router.post("/generate", response_model=GenerationResponse, status_code=status.HTTP_202_ACCEPTED)
 @limiter.limit("5/minute")
-async def submit_generation_job(
-    request: Request, 
+async def submit_generation(
+    request: Request,
     response: Response,
-    gen_request: GenerationRequest
+    gen_request: GenerationRequest,
 ):
-    """
-    Submit a music generation job.
-    """
-    session_id = get_session_id(request, response)
-    
-    # Generate job ID explicitly to ensure consistency
-    custom_job_id = secrets.token_urlsafe(16)
-    
-    # Enqueue job
-    job = job_queue.enqueue_job(
-        generate_music_task,
-        job_id=custom_job_id,
-        prompt=gen_request.prompt,
-        duration=gen_request.duration,
-        genre=gen_request.genre
+    """Submit a music generation task to the ACE-Step API."""
+    get_session_id(request, response)  # ensure session cookie is set
+
+    payload = _build_release_task_payload(gen_request)
+    client = _get_client(request)
+
+    try:
+        result = await client.submit_task(payload)
+    except ACEStepError as e:
+        raise HTTPException(status_code=e.status_code, detail=e.message)
+
+    task_id = result.get("task_id", "")
+    queue_position = result.get("queue_position")
+
+    return GenerationResponse(
+        task_id=task_id,
+        status="queued",
+        queue_position=queue_position,
     )
-    
-    # Store session ID in job metadata
-    job.meta["session_id"] = session_id
-    job.save_meta()
-    
-    return {
-        "job_id": job.id,
-        "status": "queued",
-        "estimated_wait": 30 # Rough estimate
+
+
+@router.get("/jobs/{task_id}")
+async def get_job_status(task_id: str, request: Request):
+    """Query the status of a generation task."""
+    client = _get_client(request)
+
+    try:
+        result = await client.query_result([task_id])
+    except ACEStepError as e:
+        raise HTTPException(status_code=e.status_code, detail=e.message)
+
+    # result is a list of task statuses; we requested one
+    tasks = result if isinstance(result, list) else [result]
+    if not tasks:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    task = tasks[0] if isinstance(tasks, list) else tasks
+    status_code = task.get("status", 0)
+    mapped_status = _STATUS_MAP.get(status_code, "processing")
+
+    response_data: dict = {
+        "task_id": task_id,
+        "status": mapped_status,
     }
 
-@router.get("/jobs/{job_id}")
-async def get_job_status(job_id: str, request: Request):
-    """
-    Get the status of a specific job.
-    """
-    session_id = request.cookies.get(SESSION_COOKIE_NAME) # Don't create new if missing
-    
-    job = job_queue.get_job(job_id)
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
-        
-    # Verify ownership
-    if job.meta.get("session_id") != session_id:
-        # For security, return 404 or 403. 404 prevents enumeration?
-        # 403 is clearer.
-        raise HTTPException(status_code=403, detail="Unauthorized access to job")
-        
-    response = {
-        "job_id": job.id,
-        "status": job.get_status(),
-        "created_at": job.created_at,
-        "enqueued_at": job.enqueued_at,
-        "error": job.exc_info, # Might expose stack trace? Simplify.
+    if mapped_status == "completed":
+        # Build audio proxy URLs from result file paths
+        audio_files = task.get("file", [])
+        if isinstance(audio_files, str):
+            audio_files = [audio_files]
+
+        if audio_files:
+            response_data["audio_url"] = f"/api/audio/{task_id}?path={audio_files[0]}"
+            if len(audio_files) > 1:
+                response_data["audio_urls"] = [
+                    f"/api/audio/{task_id}?path={f}" for f in audio_files
+                ]
+
+        # Include generation metadata if available
+        metadata = {}
+        for key in ("prompt", "lyrics", "bpm", "audio_duration", "key_scale", "time_signature"):
+            if key in task:
+                metadata[key] = task[key]
+        if metadata:
+            response_data["metadata"] = metadata
+
+    elif mapped_status == "failed":
+        response_data["error"] = task.get("error", "Generation failed")
+
+    return response_data
+
+
+@router.get("/audio/{task_id}")
+async def download_audio(
+    task_id: str,
+    request: Request,
+    path: str = Query(..., description="Audio file path from task result"),
+):
+    """Proxy-download generated audio from the ACE-Step API."""
+    client = _get_client(request)
+
+    try:
+        resp = await client.download_audio(path)
+    except ACEStepError as e:
+        raise HTTPException(status_code=e.status_code, detail=e.message)
+
+    content_type = resp.headers.get("content-type", "audio/mpeg")
+
+    # Determine file extension from content type
+    ext_map = {
+        "audio/mpeg": "mp3",
+        "audio/wav": "wav",
+        "audio/x-wav": "wav",
+        "audio/flac": "flac",
     }
-    
-    if job.get_status() == "failed":
-        response["error"] = "Generation failed" # Generic message
-        
-    if job.is_finished:
-        # result is whatever task returned
-        result = job.result
-        if result and result.get("path"):
-            response["audio_url"] = f"/api/audio/{job_id}"
-            
-    return response
+    ext = ext_map.get(content_type, "mp3")
+    filename = f"music_{task_id}.{ext}"
 
-@router.get("/audio/{job_id}")
-async def download_audio(job_id: str, request: Request):
-    """
-    Download the generated audio file.
-    """
-    session_id = request.cookies.get(SESSION_COOKIE_NAME)
-    
-    job = job_queue.get_job(job_id)
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
-        
-    if job.meta.get("session_id") != session_id:
-        raise HTTPException(status_code=403, detail="Unauthorized")
-        
-    if not job.is_finished:
-         raise HTTPException(status_code=400, detail="Job not completed")
-         
-    # Check if file exists
-    # We need path. Task returns path.
-    result = job.result
-    
-    # Try Storage First
-    if result and "storage_key" in result:
-        storage_key = result["storage_key"]
-        from app.services.storage import storage_service
-        url = storage_service.generate_presigned_url(storage_key)
-        if url:
-            from fastapi.responses import RedirectResponse
-            return RedirectResponse(url)
-            
-    # Fallback to local file (only works if API and Worker are same machine)
-    if not result or not result.get("path"):
-         raise HTTPException(status_code=500, detail="Audio file missing")
-         
-    file_path = result["path"]
-    import os
-    if not os.path.exists(file_path):
-         raise HTTPException(status_code=404, detail="Audio file not found on server")
-         
-    return FileResponse(file_path, media_type="audio/wav", filename=f"music_{job_id}.wav")
+    return Response(
+        content=resp.content,
+        media_type=content_type,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
-@router.delete("/jobs/{job_id}", status_code=204)
-async def cancel_job(job_id: str, request: Request):
-    session_id = request.cookies.get(SESSION_COOKIE_NAME)
-    
-    job = job_queue.get_job(job_id)
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
-        
-    if job.meta.get("session_id") != session_id:
-        raise HTTPException(status_code=403, detail="Unauthorized")
-        
-    if job.is_started or job.is_finished:
-        raise HTTPException(status_code=409, detail="Cannot cancel started or completed job")
-        
-    job_queue.cancel_job(job_id)
+
+@router.get("/models")
+async def list_models(request: Request):
+    """List available DiT models from the ACE-Step API."""
+    client = _get_client(request)
+    try:
+        return await client.list_models()
+    except ACEStepError as e:
+        raise HTTPException(status_code=e.status_code, detail=e.message)
+
+
+@router.post("/random-sample")
+async def random_sample(request: Request, body: RandomSampleRequest = RandomSampleRequest()):
+    """Get random example generation parameters from the ACE-Step API."""
+    client = _get_client(request)
+    try:
+        params = {"sample_query": body.sample_query} if body.sample_query else {}
+        return await client.get_random_sample(params)
+    except ACEStepError as e:
+        raise HTTPException(status_code=e.status_code, detail=e.message)
+
+
+@router.post("/format")
+async def format_input(request: Request, body: FormatRequest):
+    """LM-format prompt and/or lyrics via the ACE-Step API."""
+    client = _get_client(request)
+    try:
+        return await client.format_input(body.model_dump())
+    except ACEStepError as e:
+        raise HTTPException(status_code=e.status_code, detail=e.message)
+
+
+@router.delete("/jobs/{task_id}", status_code=204)
+async def cancel_job(task_id: str, request: Request):
+    """
+    Cancel / discard a generation task locally.
+
+    The ACE-Step API does not have a cancel endpoint, so this is a no-op
+    upstream. It can be extended later to track cancelled task IDs locally.
+    """
+    # No upstream cancel available; return success
     return Response(status_code=204)

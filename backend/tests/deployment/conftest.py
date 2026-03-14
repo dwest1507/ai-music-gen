@@ -5,7 +5,7 @@ These tests run against the actual deployed API (not mocked).
 """
 import pytest
 import os
-import requests
+import httpx
 from dotenv import load_dotenv
 
 # Load environment variables from .env.test if it exists
@@ -38,10 +38,10 @@ def api_url():
 def verify_api_accessible(api_url):
     """Verify the API is accessible before running tests."""
     try:
-        response = requests.get(f"{api_url}/health", timeout=10)
+        response = httpx.get(f"{api_url}/health", timeout=10)
         if response.status_code != 200:
             pytest.exit(f"API health check failed with status {response.status_code}")
-    except requests.exceptions.RequestException as e:
+    except httpx.RequestError as e:
         pytest.exit(f"Cannot reach API at {api_url}: {e}")
     
     return True
@@ -49,8 +49,10 @@ def verify_api_accessible(api_url):
 
 @pytest.fixture
 def session():
-    """Create a requests session for tests."""
-    return requests.Session()
+    """Create a httpx.Client session for tests."""
+    client = httpx.Client()
+    yield client
+    client.close()
 
 
 @pytest.fixture

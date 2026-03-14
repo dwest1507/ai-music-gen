@@ -455,17 +455,17 @@ NEXT_PUBLIC_API_URL=http://localhost:8000
 
 ### Phase 1: Backend Refactoring
 
-- [ ] **Create `backend/app/services/acestep_client.py`**
+- [x] **Create `backend/app/services/acestep_client.py`**
   - Async HTTP client using `httpx.AsyncClient`
   - Methods: `submit_task()`, `query_result()`, `download_audio()`, `health_check()`, `list_models()`, `get_random_sample()`, `format_input()`
   - Error handling, timeouts, and optional API key auth
   - Configurable base URL from environment variable
 
-- [ ] **Update `backend/app/core/config.py`**
+- [x] **Update `backend/app/core/config.py`**
   - Add `ACESTEP_API_URL` and `ACESTEP_API_KEY`
   - Remove `REDIS_URL`, `MODAL_TOKEN_ID`, `MODAL_TOKEN_SECRET`, all `STORAGE_*` variables
 
-- [ ] **Refactor `backend/app/api/routes/generation.py`**
+- [x] **Refactor `backend/app/api/routes/generation.py`**
   - Update `GenerationRequest` Pydantic model with expanded fields (lyrics, vocal_language, audio_format, thinking, bpm, key_scale, time_signature, etc.)
   - Update `POST /api/generate` to call `acestep_client.submit_task()`
   - Update `GET /api/jobs/{task_id}` to call `acestep_client.query_result()`
@@ -475,31 +475,31 @@ NEXT_PUBLIC_API_URL=http://localhost:8000
   - Add `POST /api/format` route
   - Keep session-based rate limiting and input validation
 
-- [ ] **Update `backend/app/main.py`**
+- [x] **Update `backend/app/main.py`**
   - Remove RQ-related imports/middleware
   - Add `httpx.AsyncClient` lifecycle management (startup/shutdown events or lifespan)
 
-- [ ] **Delete obsolete files**
+- [x] **Delete obsolete files**
   - `backend/app/services/modal_client.py`
   - `backend/app/services/job_queue.py`
   - `backend/app/services/storage.py`
   - `backend/modal_app.py`
 
-- [ ] **Update `backend/requirements.txt`**
+- [x] **Update `backend/requirements.txt`**
   - Remove: `redis`, `rq`, `modal`, `boto3`, `requests`
   - Ensure `httpx` is present (already included)
   - Add `python-dotenv` if not present (already included)
 
-- [ ] **Update `docker-compose.yml`**
+- [x] **Update `docker-compose.yml`**
   - Remove `redis` service
   - Remove `worker` service
   - Remove `audio_temp` volume
   - Update `backend` environment variables
 
-- [ ] **Update `.env.example`**
+- [x] **Update `.env.example`**
   - Replace Modal/Redis/Storage variables with ACE-Step API variables
 
-- [ ] **Update `Dockerfile`**
+- [x] **Update `Dockerfile`**
   - Remove any Redis/RQ-specific configuration
 
 ### Phase 2: Frontend Refactoring
