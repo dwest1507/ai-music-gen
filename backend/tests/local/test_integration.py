@@ -33,10 +33,11 @@ async def test_integration_workflow(async_client, mock_acestep_client):
     assert job_data["status"] == "queued"
     
     # 2. Poll for completion
-    # We'll simulate 1 processing response, then 1 completed response
+    # We'll simulate 1 processing response, then 1 completed response, then 1 for SSRF check during download
     mock_acestep_client.query_result.side_effect = [
         [{"status": 0}], # processing
-        [{"status": 1, "file": [audio_path], "prompt": "Test integration prompt", "audio_duration": 10}] # completed
+        [{"status": 1, "file": [audio_path], "prompt": "Test integration prompt", "audio_duration": 10}], # completed
+        [{"status": 1, "file": [audio_path]}] # during download SSRF lookup
     ]
     
     # First poll: Processing
@@ -58,9 +59,13 @@ async def test_integration_workflow(async_client, mock_acestep_client):
     # 3. Download audio
     # Setup mock for audio download
     mock_audio_response = MagicMock(spec=Response)
-    mock_audio_response.content = b"fake-audio-content"
     mock_audio_response.headers = {"content-type": "audio/mpeg"}
-    mock_acestep_client.download_audio.return_value = mock_audio_response
+    
+    async def mock_aiter_bytes(*args, **kwargs):
+        yield b"fake-audio-content"
+        
+    mock_audio_response.aiter_bytes = mock_aiter_bytes
+    mock_acestep_client.download_audio_stream.return_value = mock_audio_response
     
     download_response = await async_client.get(audio_url)
     assert download_response.status_code == 200

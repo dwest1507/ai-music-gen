@@ -59,8 +59,9 @@ async def test_error_handling_timeout(acestep_client, mock_httpx_client):
 
 @pytest.mark.asyncio
 async def test_download_audio_success(acestep_client, mock_httpx_client):
-    mock_httpx_client.get.return_value = Response(200, content=b"audio-data")
+    mock_resp = Response(200, content=b"audio-data")
+    mock_httpx_client.send.return_value = mock_resp
     
-    resp = await acestep_client.download_audio("path/to/file.mp3")
+    resp = await acestep_client.download_audio_stream("path/to/file.mp3")
     assert resp.status_code == 200
     assert resp.content == b"audio-data"

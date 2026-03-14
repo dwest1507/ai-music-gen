@@ -12,7 +12,6 @@ from dotenv import load_dotenv
 load_dotenv(".env.test")
 
 # Disable pytest-asyncio for these tests (we don't use async)
-pytest_plugins = []
 
 
 def pytest_configure(config):

@@ -134,10 +134,16 @@ async def test_get_job_status_failed(async_client, mock_acestep_client):
 
 @pytest.mark.asyncio
 async def test_download_audio(async_client, mock_acestep_client):
+    mock_acestep_client.query_result.return_value = [{"status": 1, "file": ["output/test.mp3"]}]
     mock_response = MagicMock(spec=httpx.Response)
-    mock_response.content = b"fake-audio-data"
     mock_response.headers = {"content-type": "audio/mpeg"}
-    mock_acestep_client.download_audio.return_value = mock_response
+    
+    # We mock the async generator for the chunks
+    async def mock_aiter_bytes(*args, **kwargs):
+        yield b"fake-audio-data"
+        
+    mock_response.aiter_bytes = mock_aiter_bytes
+    mock_acestep_client.download_audio_stream.return_value = mock_response
 
     response = await async_client.get("/api/audio/test-task?path=output/test.mp3")
     assert response.status_code == 200
