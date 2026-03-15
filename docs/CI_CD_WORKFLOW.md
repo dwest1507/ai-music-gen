@@ -26,6 +26,25 @@ This approach saves money, guarantees clean test environments that match feature
 
 ---
 
+## Automated Releases
+
+We use **Semantic Release** to automate the versioning and release process.
+
+### The Release Flow
+1. **Develop**: Commit changes locally using [Conventional Commits](https://www.conventionalcommits.org/).
+2. **Pull Request**: Open a PR. The `Frontend CI` and `Backend CI` workflows will run.
+3. **Merge**: Upon merging to `main`, the `Release` workflow is triggered.
+4. **Versioning**:
+   - Analyzes commits since the last tag.
+   - Calculates the next version (Patch, Minor, or Major).
+   - Updates `package.json`, `frontend/package.json`, and `backend/pyproject.toml`.
+   - Generates a `CHANGELOG.md`.
+5. **Publish**:
+   - Commits the version bumps back to `main` (skipping CI to avoid loops).
+   - Creates a GitHub Tag and GitHub Release with the auto-generated notes.
+
+---
+
 ## ⚠️ The Decoupled Environment Variable Challenge
 
 When Vercel builds a frontend PR and Railway builds a backend PR simultaneously, they both generate dynamic, unpredictable URLs (e.g., `ai-music-gen-git-feature.vercel.app` and `backend-pr-12.up.railway.app`). 
