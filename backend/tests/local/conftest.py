@@ -1,49 +1,36 @@
-import pytest
 import sys
 import os
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 from httpx import AsyncClient, ASGITransport
 
-# Add the backend directory to sys.path to ensure imports work correctly
-# tests/local/conftest.py -> go up 2 levels to reach backend/
+# Add the backend directory to sys.path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-# Mock redis and rq before importing app to prevent connection attempts
-# We use a session-scoped autouse fixture to patch these for all tests
-@pytest.fixture(scope="session", autouse=True)
-def mock_external_services():
-    with patch("redis.from_url") as mock_redis, \
-         patch("rq.Queue") as mock_queue:
-        
-        # Configure mocks to return useful objects
-        mock_redis_instance = MagicMock()
-        mock_redis.return_value = mock_redis_instance
-        
-        mock_queue_instance = MagicMock()
-        mock_queue.return_value = mock_queue_instance
-        
-        # Yield to let tests run
-        yield
-        
 import pytest_asyncio
+from app.services.acestep_client import ACEStepClient
+
 
 @pytest_asyncio.fixture
-async def async_client():
-    # delayed import to ensure mocks are active
+async def mock_acestep_client():
+    """Create a fully-mocked ACEStepClient."""
+    client = MagicMock(spec=ACEStepClient)
+    client.submit_task = AsyncMock()
+    client.query_result = AsyncMock()
+    client.download_audio = AsyncMock()
+    client.health_check = AsyncMock(return_value={"status": "ok"})
+    client.list_models = AsyncMock()
+    client.get_random_sample = AsyncMock()
+    client.format_input = AsyncMock()
+    return client
+
+
+@pytest_asyncio.fixture
+async def async_client(mock_acestep_client):
+    """Create a test client with the mocked ACE-Step client injected."""
     from app.main import app
+
+    # Override the lifespan-managed client
+    app.state.acestep_client = mock_acestep_client
+
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         yield ac
-
-@pytest.fixture
-def mock_job_queue():
-    # Patch the global 'job_queue' object in generation.py
-    # or better, patch the methods of the JobQueueService instance
-    from app.services.job_queue import job_queue
-    
-    # We can mock the methods directly on the existing instance
-    # since the instance was created during import (with mocked redis/queue from above)
-    job_queue.enqueue_job = MagicMock()
-    job_queue.get_job = MagicMock()
-    job_queue.cancel_job = MagicMock()
-    
-    return job_queue
