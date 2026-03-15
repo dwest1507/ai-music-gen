@@ -68,14 +68,22 @@ flowchart LR
    Edit `.env` and add your Modal credentials and a secure session secret.
 
 3. **Start the Application**
-   Run with Docker Compose:
+   We provide a Makefile to simplify local development commands. 
+   
+   To install dependencies:
    ```bash
-   docker-compose up --build
+   make install
    ```
+
+   To run the application locally (starts both frontend and backend):
+   ```bash
+   make dev
+   ```
+
+   *(Alternatively, run with Docker Compose: `make dev-docker`)*
 
    - Backend API: http://localhost:8000
    - Frontend: http://localhost:3000
-   - Redis: localhost:6379
 
 ## Security
 
