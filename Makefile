@@ -1,10 +1,11 @@
-.PHONY: help install dev dev-frontend dev-backend dev-docker test lint clean
+.PHONY: help install dev dev-frontend dev-backend dev-docker test lint clean stop
 
 help:
 	@echo "Available commands:"
 	@echo "  make install      - Install frontend and backend dependencies"
 	@echo "  make dev          - Run both frontend and backend locally"
-	@echo "  make dev-docker   - Run the full stack using docker-compose"
+	@echo "  make dev-docker   - Run the full stack using docker compose"
+	@echo "  make stop         - Stop running dev servers and docker containers"
 	@echo "  make test         - Run frontend and backend tests"
 	@echo "  make lint         - Run frontend and backend linters"
 	@echo "  make clean        - Remove caches and build artifacts"
@@ -26,7 +27,14 @@ dev:
 	@$(MAKE) -j2 dev-frontend dev-backend
 
 dev-docker:
-	docker-compose up --build
+	docker compose up --build
+
+stop:
+	@echo "Stopping running servers on ports 3000 and 8000..."
+	-@lsof -ti:3000 | xargs kill -9 2>/dev/null || true
+	-@lsof -ti:8000 | xargs kill -9 2>/dev/null || true
+	@echo "Stopping Docker containers..."
+	-@docker compose down 2>/dev/null || true
 
 test:
 	@echo "Running backend tests..."
