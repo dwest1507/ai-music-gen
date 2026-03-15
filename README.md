@@ -45,14 +45,10 @@ flowchart LR
    Edit `.env` and add your ACE-Step API URL (`ACESTEP_API_URL`) and a secure session secret.
 
 3. **Pre-commit Hooks (Recommended)**
-   Install `pre-commit` using `uv` to catch security and linting issues locally:
+   Install `pre-commit` to catch security and linting issues locally before committing:
    ```bash
-   cd backend
-   uv sync
-   cd ..
-   uv tool install semgrep
    uv tool install pre-commit
-   uv run pre-commit install
+   pre-commit install
    ```
 
 4. **Start the Application**
