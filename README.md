@@ -67,3 +67,15 @@ flowchart LR
 - **Input Validation**: All inputs validated with Pydantic.
 - **API Security**: CORS, Rate limiting, and secure headers. Modal API URL and API keys are never exposed to the frontend.
 - **Session Management**: Secure session handling with cleanup.
+
+## Versioning
+
+This project uses [Semantic Release](https://github.com/semantic-release/semantic-release) for automated versioning and changelog generation.
+
+### Conventional Commits
+Versions are calculated based on commit messages following the [Conventional Commits](https://www.conventionalcommits.org/) specification:
+- `fix:` bumps to a new **Patch** version (e.g., 0.1.0 -> 0.1.1).
+- `feat:` bumps to a new **Minor** version (e.g., 0.1.0 -> 0.2.0).
+- `feat!:` or `BREAKING CHANGE:` bumps to a new **Major** version (e.g., 0.1.0 -> 1.0.0).
+
+Both the Frontend and Backend are synchronized under a single unified version.
