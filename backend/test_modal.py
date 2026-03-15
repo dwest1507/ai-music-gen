@@ -1,7 +1,5 @@
 import httpx
-import json
 import os
-import sys
 
 # we can use httpx since it's already installed
 from dotenv import load_dotenv
