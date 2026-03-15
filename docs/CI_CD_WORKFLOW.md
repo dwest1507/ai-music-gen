@@ -40,6 +40,20 @@ We use **Release Please** to automate the versioning and release process via Git
 
 ---
 
+## Automated Releases
+
+We use **Release Please** to automate the versioning and release process via GitHub Pull Requests.
+
+### The Release Flow
+1. **Develop**: Push changes directly to `main` (or merge PRs) using [Conventional Commits](https://www.conventionalcommits.org/).
+2. **Release PR**: On every push to `main`, the `Release Please` workflow runs. It analyzes the commits and:
+   - If new version-bumping commits are found, it opens or updates a special "Release PR".
+   - This PR includes updated versions in `frontend/package.json` and `backend/pyproject.toml`, plus an updated `CHANGELOG.md`.
+3. **Review & Merge**: When you are ready to release, simply merge that Release PR.
+4. **Tagging**: Merging the Release PR automatically creates a GitHub Tag and GitHub Release.
+
+---
+
 ## ⚠️ The Decoupled Environment Variable Challenge
 
 When Vercel builds a frontend PR and Railway builds a backend PR simultaneously, they both generate dynamic, unpredictable URLs (e.g., `ai-music-gen-git-feature.vercel.app` and `backend-pr-12.up.railway.app`). 
