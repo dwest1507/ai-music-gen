@@ -28,20 +28,29 @@ This approach saves money, guarantees clean test environments that match feature
 
 ## Automated Releases
 
-We use **Semantic Release** to automate the versioning and release process.
+We use **Release Please** to automate the versioning and release process via GitHub Pull Requests.
 
 ### The Release Flow
-1. **Develop**: Commit changes locally using [Conventional Commits](https://www.conventionalcommits.org/).
-2. **Pull Request**: Open a PR. The `Frontend CI` and `Backend CI` workflows will run.
-3. **Merge**: Upon merging to `main`, the `Release` workflow is triggered.
-4. **Versioning**:
-   - Analyzes commits since the last tag.
-   - Calculates the next version (Patch, Minor, or Major).
-   - Updates `package.json`, `frontend/package.json`, and `backend/pyproject.toml`.
-   - Generates a `CHANGELOG.md`.
-5. **Publish**:
-   - Commits the version bumps back to `main` (skipping CI to avoid loops).
-   - Creates a GitHub Tag and GitHub Release with the auto-generated notes.
+1. **Develop**: Push changes directly to `main` (or merge PRs) using [Conventional Commits](https://www.conventionalcommits.org/).
+2. **Release PR**: On every push to `main`, the `Release Please` workflow runs. It analyzes the commits and:
+   - If new version-bumping commits are found, it opens or updates a special "Release PR".
+   - This PR includes updated versions in `frontend/package.json` and `backend/pyproject.toml`, plus an updated `CHANGELOG.md`.
+3. **Review & Merge**: When you are ready to release, simply merge that Release PR.
+4. **Tagging**: Merging the Release PR automatically creates a GitHub Tag and GitHub Release.
+
+---
+
+## Automated Releases
+
+We use **Release Please** to automate the versioning and release process via GitHub Pull Requests.
+
+### The Release Flow
+1. **Develop**: Push changes directly to `main` (or merge PRs) using [Conventional Commits](https://www.conventionalcommits.org/).
+2. **Release PR**: On every push to `main`, the `Release Please` workflow runs. It analyzes the commits and:
+   - If new version-bumping commits are found, it opens or updates a special "Release PR".
+   - This PR includes updated versions in `frontend/package.json` and `backend/pyproject.toml`, plus an updated `CHANGELOG.md`.
+3. **Review & Merge**: When you are ready to release, simply merge that Release PR.
+4. **Tagging**: Merging the Release PR automatically creates a GitHub Tag and GitHub Release.
 
 ---
 

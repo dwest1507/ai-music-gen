@@ -70,12 +70,11 @@ flowchart LR
 
 ## Versioning
 
-This project uses [Semantic Release](https://github.com/semantic-release/semantic-release) for automated versioning and changelog generation.
+This project uses [Release Please](https://github.com/googleapis/release-please) for automated versioning and changelog generation.
 
-### Conventional Commits
-Versions are calculated based on commit messages following the [Conventional Commits](https://www.conventionalcommits.org/) specification:
-- `fix:` bumps to a new **Patch** version (e.g., 0.1.0 -> 0.1.1).
-- `feat:` bumps to a new **Minor** version (e.g., 0.1.0 -> 0.2.0).
-- `feat!:` or `BREAKING CHANGE:` bumps to a new **Major** version (e.g., 0.1.0 -> 1.0.0).
+### Release Workflow
+1.  **Develop:** Push changes to `main` using [Conventional Commits](https://www.conventionalcommits.org/).
+2.  **Release PR:** Release Please automatically opens a Pull Request with updated versions and changelog entries.
+3.  **Merge:** When you merge the Release PR, it creates a GitHub Release and Git Tag.
 
-Both the Frontend and Backend are synchronized under a single unified version.
+All components (Frontend and Backend) share a single synchronized version.
