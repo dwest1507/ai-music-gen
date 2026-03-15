@@ -32,12 +32,12 @@ interface MusicGeneratorFormProps {
 
 export function MusicGeneratorForm({ onJobCreated }: MusicGeneratorFormProps) {
     const [isAdvanced, setIsAdvanced] = useState(false);
-    
+
     // Simple state
     const [prompt, setPrompt] = useState("");
     const [duration, setDuration] = useState("60");
     const [genre, setGenre] = useState("");
-    
+
     // Advanced state
     const [lyrics, setLyrics] = useState("");
     const [vocalLanguage, setVocalLanguage] = useState("en");
@@ -48,7 +48,7 @@ export function MusicGeneratorForm({ onJobCreated }: MusicGeneratorFormProps) {
     const [timeSignature, setTimeSignature] = useState("");
     const [inferenceSteps, setInferenceSteps] = useState("8");
     const [batchSize, setBatchSize] = useState("1");
-    
+
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [lastSubmitTime, setLastSubmitTime] = useState(0);
@@ -119,10 +119,10 @@ export function MusicGeneratorForm({ onJobCreated }: MusicGeneratorFormProps) {
                         Describe the music you want to generate using AI.
                     </CardDescription>
                 </div>
-                <Button 
+                <Button
                     type="button"
-                    variant="ghost" 
-                    size="sm" 
+                    variant="ghost"
+                    size="sm"
                     onClick={() => setIsAdvanced(!isAdvanced)}
                     className="flex items-center gap-2"
                 >
@@ -189,7 +189,7 @@ export function MusicGeneratorForm({ onJobCreated }: MusicGeneratorFormProps) {
                                 <Sparkles className="w-4 h-4 text-purple-500" />
                                 Advanced Controls
                             </h3>
-                            
+
                             <div className="space-y-2">
                                 <label htmlFor="lyrics" className="text-sm font-medium leading-none">
                                     Lyrics (Optional)
@@ -240,7 +240,7 @@ export function MusicGeneratorForm({ onJobCreated }: MusicGeneratorFormProps) {
                                         disabled={isLoading}
                                     />
                                 </div>
-                                
+
                                 <div className="space-y-2">
                                     <label htmlFor="keyScale" className="text-sm font-medium leading-none">
                                         Key / Scale
@@ -267,7 +267,7 @@ export function MusicGeneratorForm({ onJobCreated }: MusicGeneratorFormProps) {
                                     />
                                 </div>
                             </div>
-                            
+
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-2">
                                     <label htmlFor="inferenceSteps" className="text-sm font-medium leading-none">
@@ -303,8 +303,8 @@ export function MusicGeneratorForm({ onJobCreated }: MusicGeneratorFormProps) {
 
                             <div className="flex gap-4 pt-2">
                                 <label className="flex items-center gap-2 text-sm font-medium leading-none">
-                                    <input 
-                                        type="checkbox" 
+                                    <input
+                                        type="checkbox"
                                         checked={thinking}
                                         onChange={(e) => setThinking(e.target.checked)}
                                         disabled={isLoading}
@@ -313,8 +313,8 @@ export function MusicGeneratorForm({ onJobCreated }: MusicGeneratorFormProps) {
                                     Use LM Thinking
                                 </label>
                                 <label className="flex items-center gap-2 text-sm font-medium leading-none">
-                                    <input 
-                                        type="checkbox" 
+                                    <input
+                                        type="checkbox"
                                         checked={useFormat}
                                         onChange={(e) => setUseFormat(e.target.checked)}
                                         disabled={isLoading}

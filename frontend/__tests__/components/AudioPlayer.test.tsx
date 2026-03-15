@@ -44,7 +44,7 @@ describe('AudioPlayer', () => {
 
     it('handles download correctly and infers extension from parameter', () => {
         render(<AudioPlayer audioUrl="https://api.example.com/audio/task123?index=0" />);
-        
+
         const mockLink = {
             click: vi.fn(),
             href: '',
@@ -65,7 +65,7 @@ describe('AudioPlayer', () => {
 
     it('handles download fallback to .wav', () => {
         render(<AudioPlayer audioUrl="/api/audio/123-456.wav" />);
-        
+
         const mockLink = {
             click: vi.fn(),
             href: '',

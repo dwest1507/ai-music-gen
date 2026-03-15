@@ -53,7 +53,7 @@ describe('MusicGeneratorForm', () => {
         expect(screen.getByRole('textbox', { name: /^Prompt$/i })).toBeInTheDocument();
         expect(screen.getByLabelText(/Duration/i)).toBeInTheDocument();
         expect(screen.getByRole('button', { name: /Generate Music/i })).toBeInTheDocument();
-        
+
         // Advanced fields should not be visible
         expect(screen.queryByRole('textbox', { name: /Lyrics/i })).not.toBeInTheDocument();
     });
@@ -68,7 +68,7 @@ describe('MusicGeneratorForm', () => {
         expect(screen.getByRole('textbox', { name: /Lyrics/i })).toBeInTheDocument();
         expect(screen.getByLabelText(/BPM/i)).toBeInTheDocument();
         expect(screen.getByLabelText(/Time Sig/i)).toBeInTheDocument();
-        
+
         // The toggle button should say Simple Mode
         expect(screen.getByRole('button', { name: /Simple Mode/i })).toBeInTheDocument();
     });
@@ -177,4 +177,3 @@ describe('MusicGeneratorForm', () => {
         expect(mockOnJobCreated).not.toHaveBeenCalled();
     });
 });
-

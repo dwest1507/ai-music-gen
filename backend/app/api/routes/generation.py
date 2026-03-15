@@ -58,6 +58,7 @@ class FormatRequest(BaseModel):
 
 class RandomSampleRequest(BaseModel):
     """Optional parameters for random sample generation."""
+
     sample_query: Optional[str] = ""
 
 
@@ -136,7 +137,9 @@ def _parse_acestep_result(task: dict) -> list[dict]:
 # ── Routes ────────────────────────────────────────────────────────
 
 
-@router.post("/generate", response_model=GenerationResponse, status_code=status.HTTP_202_ACCEPTED)
+@router.post(
+    "/generate", response_model=GenerationResponse, status_code=status.HTTP_202_ACCEPTED
+)
 @limiter.limit("5/minute")
 async def submit_generation(
     request: Request,
@@ -258,16 +261,17 @@ async def download_audio(
             f = item.get("file")
             if f:
                 audio_files.append(f)
-            
+
         if not audio_files or index >= len(audio_files):
             raise HTTPException(status_code=404, detail="Audio file not found")
-            
+
         safe_path = audio_files[index]
         # Sometimes the ACE-Step API returns the full endpoint string e.g. /v1/audio?path=...
         # We need to extract the actual path argument
         if "?path=" in safe_path:
             safe_path = safe_path.split("?path=")[1]
             import urllib.parse
+
             safe_path = urllib.parse.unquote(safe_path)
 
         resp = await client.download_audio_stream(safe_path)
@@ -314,7 +318,11 @@ async def list_models(request: Request, response: Response):
 
 @router.post("/random-sample")
 @limiter.limit("10/minute")
-async def random_sample(request: Request, response: Response, body: RandomSampleRequest = RandomSampleRequest()):
+async def random_sample(
+    request: Request,
+    response: Response,
+    body: RandomSampleRequest = RandomSampleRequest(),
+):
     """Get random example generation parameters from the ACE-Step API."""
     get_session_id(request, response)
     client = _get_client(request)

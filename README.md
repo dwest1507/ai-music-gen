@@ -44,9 +44,16 @@ flowchart LR
    ```
    Edit `.env` and add your ACE-Step API URL (`ACESTEP_API_URL`) and a secure session secret.
 
-3. **Start the Application**
-   We provide a Makefile to simplify local development commands. 
-   
+3. **Pre-commit Hooks (Recommended)**
+   Install `pre-commit` to catch security and linting issues locally before committing:
+   ```bash
+   uv tool install pre-commit
+   pre-commit install
+   ```
+
+4. **Start the Application**
+   We provide a Makefile to simplify local development commands.
+
    To install dependencies:
    ```bash
    make install
@@ -64,7 +71,9 @@ flowchart LR
 
 ## Security
 
-- **Input Validation**: All inputs validated with Pydantic.
+- **Automated Scanning**: Continuous security monitoring via GitHub Actions for SAST (Semgrep, Bandit), Secrets (Gitleaks), Dependencies (pip-audit, npm audit), and Containers (Trivy).
+- **Dependency Management**: Automated patching and updates via Dependabot.
+- **Input Validation**: All inputs validated with Pydantic (backend) and Zod (frontend).
 - **API Security**: CORS, Rate limiting, and secure headers. Modal API URL and API keys are never exposed to the frontend.
 - **Session Management**: Secure session handling with cleanup.
 

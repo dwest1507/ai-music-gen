@@ -417,7 +417,7 @@ These improvements were identified during a system design review and implemented
 These features extend the base architecture with deeper functionality:
 
 - **User Accounts & Persistence**: NextAuth.js + PostgreSQL for saved generations
-- **History**: Store task IDs and metadata per user for a generation history view  
+- **History**: Store task IDs and metadata per user for a generation history view
 - **Reference Audio Upload**: Utilize ACE-Step's `reference_audio` / `src_audio` multipart upload support for cover/repaint tasks
 - **Monetization**: Tiered rate limits, Stripe integration
 - **Batch Generation UI**: Expose `batch_size > 1` with a comparison view

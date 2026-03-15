@@ -45,7 +45,9 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # Routes
-app.include_router(generation.router, prefix=f"{settings.API_V1_STR}", tags=["generation"])
+app.include_router(
+    generation.router, prefix=f"{settings.API_V1_STR}", tags=["generation"]
+)
 
 
 @app.get("/health")
