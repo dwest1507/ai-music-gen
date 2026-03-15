@@ -118,7 +118,7 @@ export function JobStatus({ jobId }: JobStatusProps) {
                         {job.status === "failed" && "Generation Failed"}
                     </span>
                 </CardTitle>
-                
+
                 {job.metadata && (job.metadata.prompt || job.metadata.genre) && (
                     <CardDescription className="italic line-clamp-2">
                         &quot;{job.metadata.prompt}&quot;

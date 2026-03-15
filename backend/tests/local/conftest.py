@@ -4,7 +4,9 @@ from unittest.mock import AsyncMock, MagicMock
 from httpx import AsyncClient, ASGITransport
 
 # Add the backend directory to sys.path
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+sys.path.insert(
+    0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+)
 
 import pytest_asyncio
 from app.services.acestep_client import ACEStepClient
@@ -32,5 +34,7 @@ async def async_client(mock_acestep_client):
     # Override the lifespan-managed client
     app.state.acestep_client = mock_acestep_client
 
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as ac:
         yield ac

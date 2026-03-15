@@ -1,6 +1,6 @@
 # Manual Deployment Guide
 
-This guide covers deploying the AI Music Generation frontend and backend. 
+This guide covers deploying the AI Music Generation frontend and backend.
 
 *Note: The core ACE-Step model runs separately on Modal. You must deploy it from the `ACE-Step-1.5` repository first.*
 
@@ -22,7 +22,7 @@ This guide covers deploying the AI Music Generation frontend and backend.
    - `FRONTEND_URL`: The URL where your frontend will be deployed (e.g., `https://your-frontend-domain.vercel.app`)
 5. Deploy the backend and copy its generated public URL (e.g., `https://backend-production.up.railway.app`).
 
-> **Important**: The previous architecture required a Redis add-on and a separate worker service. These are **no longer required**. 
+> **Important**: The previous architecture required a Redis add-on and a separate worker service. These are **no longer required**.
 
 ## 3. Deploy the Frontend (Vercel)
 

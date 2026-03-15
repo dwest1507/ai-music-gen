@@ -15,8 +15,8 @@ from app.core.config import settings
 logger = logging.getLogger(__name__)
 
 # Timeout profiles (seconds)
-DEFAULT_TIMEOUT = 60*5
-AUDIO_DOWNLOAD_TIMEOUT = 60*5
+DEFAULT_TIMEOUT = 60 * 5
+AUDIO_DOWNLOAD_TIMEOUT = 60 * 5
 
 
 class ACEStepError(Exception):

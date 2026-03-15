@@ -3,6 +3,7 @@ Pytest configuration for deployment tests.
 
 These tests run against the actual deployed API (not mocked).
 """
+
 import pytest
 import os
 import httpx
@@ -28,7 +29,7 @@ def pytest_configure(config):
 def api_url():
     """Get the API URL from environment."""
     url = os.getenv("API_URL", "https://my-app-production.up.railway.app")
-    
+
     # Remove trailing slash if present
     return url.rstrip("/")
 
@@ -42,7 +43,7 @@ def verify_api_accessible(api_url):
             pytest.exit(f"API health check failed with status {response.status_code}")
     except httpx.RequestError as e:
         pytest.exit(f"Cannot reach API at {api_url}: {e}")
-    
+
     return True
 
 
@@ -70,8 +71,8 @@ def test_duration():
 def cleanup_jobs():
     """Track jobs created during tests for cleanup."""
     jobs = []
-    
+
     yield jobs
-    
+
     # Cleanup logic could go here if needed
     # For now, jobs will naturally expire from the queue

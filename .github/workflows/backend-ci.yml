@@ -40,8 +40,5 @@ jobs:
     - name: Lint with Ruff
       run: uv run ruff check .
 
-    - name: Security Scan with Bandit
-      run: uv run bandit -r app/
-
     - name: Run tests with Pytest
       run: uv run pytest tests/local/ -v

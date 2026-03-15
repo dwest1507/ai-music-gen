@@ -50,7 +50,7 @@ describe('JobStatus', () => {
     it('renders initializing state before data loads', () => {
         // Will never resolve in this test
         mockApiFetch.mockImplementation(() => new Promise(() => {}));
-        
+
         render(<JobStatus jobId="test-job-123" />);
         expect(screen.getByText('Initializing job...')).toBeInTheDocument();
     });
@@ -66,7 +66,7 @@ describe('JobStatus', () => {
         await waitFor(() => {
             expect(screen.getByText('Waiting in Queue...')).toBeInTheDocument();
         });
-        
+
         expect(mockApiFetch).toHaveBeenCalledTimes(1);
     });
 

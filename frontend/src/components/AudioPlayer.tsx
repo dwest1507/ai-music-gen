@@ -63,13 +63,13 @@ export function AudioPlayer({ audioUrl, className }: AudioPlayerProps) {
     const handleDownload = () => {
         const link = document.createElement("a");
         link.href = fullAudioUrl;
-        
+
         let filename = "generated-music.mp3";
         try {
             const urlObj = new URL(fullAudioUrl,
                 fullAudioUrl.startsWith("http") ? undefined : window.location.origin
             );
-            
+
             // Try to use the task ID from the URL path: /api/audio/{task_id}
             const parts = urlObj.pathname.split("/");
             const taskId = parts[parts.length - 1];
@@ -88,7 +88,7 @@ export function AudioPlayer({ audioUrl, className }: AudioPlayerProps) {
             if (fullAudioUrl.includes("wav")) filename = "generated-music.wav";
             else if (fullAudioUrl.includes("flac")) filename = "generated-music.flac";
         }
-        
+
         link.download = filename;
         document.body.appendChild(link);
         link.click();
