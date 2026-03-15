@@ -32,12 +32,13 @@ async def test_integration_workflow(async_client, mock_acestep_client):
     assert job_data["task_id"] == task_id
     assert job_data["status"] == "queued"
     
+    import json
     # 2. Poll for completion
     # We'll simulate 1 processing response, then 1 completed response, then 1 for SSRF check during download
     mock_acestep_client.query_result.side_effect = [
         [{"status": 0}], # processing
-        [{"status": 1, "file": [audio_path], "prompt": "Test integration prompt", "audio_duration": 10}], # completed
-        [{"status": 1, "file": [audio_path]}] # during download SSRF lookup
+        [{"status": 1, "result": json.dumps([{"file": audio_path, "metas": {"prompt": "Test integration prompt", "duration": 10}}])}], # completed
+        [{"status": 1, "result": json.dumps([{"file": audio_path}])}] # during download SSRF lookup
     ]
     
     # First poll: Processing

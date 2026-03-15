@@ -151,6 +151,7 @@ Supports optional API key via:
 | SEC-4 | Rate limiting on generation endpoint |
 | SEC-5 | Request size limits to prevent DoS |
 | SEC-6 | No sensitive data stored client-side |
+| SEC-7 | Connection between FastAPI backend and Modal API requires authentication |
 
 ---
 

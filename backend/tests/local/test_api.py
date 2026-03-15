@@ -91,12 +91,18 @@ async def test_submit_generation_validation_invalid_format(async_client):
 
 @pytest.mark.asyncio
 async def test_get_job_status_completed(async_client, mock_acestep_client):
+    import json
+    result_str = json.dumps([{
+        "file": "output/test-task.mp3",
+        "metas": {
+            "prompt": "epic soundtrack",
+            "duration": 60,
+        }
+    }])
     mock_acestep_client.query_result.return_value = [
         {
             "status": 1,  # completed
-            "file": ["output/test-task.mp3"],
-            "prompt": "epic soundtrack",
-            "audio_duration": 60,
+            "result": result_str
         }
     ]
 
@@ -134,7 +140,9 @@ async def test_get_job_status_failed(async_client, mock_acestep_client):
 
 @pytest.mark.asyncio
 async def test_download_audio(async_client, mock_acestep_client):
-    mock_acestep_client.query_result.return_value = [{"status": 1, "file": ["output/test.mp3"]}]
+    import json
+    result_str = json.dumps([{"file": "output/test.mp3"}])
+    mock_acestep_client.query_result.return_value = [{"status": 1, "result": result_str}]
     mock_response = MagicMock(spec=httpx.Response)
     mock_response.headers = {"content-type": "audio/mpeg"}
     
