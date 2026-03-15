@@ -6,6 +6,7 @@ import WaveSurfer from "wavesurfer.js";
 import { Button } from "@/components/ui/button";
 import { Play, Pause, Download, Volume2, VolumeX } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { API_BASE_URL } from "@/lib/api";
 
 interface AudioPlayerProps {
     audioUrl: string;
@@ -13,6 +14,7 @@ interface AudioPlayerProps {
 }
 
 export function AudioPlayer({ audioUrl, className }: AudioPlayerProps) {
+    const fullAudioUrl = audioUrl.startsWith("/") ? `${API_BASE_URL}${audioUrl}` : audioUrl;
     const containerRef = useRef<HTMLDivElement>(null);
     const wavesurferRef = useRef<WaveSurfer | null>(null);
     const [isPlaying, setIsPlaying] = useState(false);
@@ -31,7 +33,7 @@ export function AudioPlayer({ audioUrl, className }: AudioPlayerProps) {
             barGap: 3,
             height: 60,
             normalize: true,
-            url: audioUrl,
+            url: fullAudioUrl,
         });
 
         wavesurferRef.current.on("ready", () => {
@@ -45,7 +47,7 @@ export function AudioPlayer({ audioUrl, className }: AudioPlayerProps) {
         return () => {
             wavesurferRef.current?.destroy();
         };
-    }, [audioUrl]);
+    }, [fullAudioUrl]);
 
     const togglePlay = () => {
         wavesurferRef.current?.playPause();
@@ -60,11 +62,13 @@ export function AudioPlayer({ audioUrl, className }: AudioPlayerProps) {
 
     const handleDownload = () => {
         const link = document.createElement("a");
-        link.href = audioUrl;
+        link.href = fullAudioUrl;
         
         let filename = "generated-music.mp3";
         try {
-            const urlObj = new URL(audioUrl, window.location.origin);
+            const urlObj = new URL(fullAudioUrl,
+                fullAudioUrl.startsWith("http") ? undefined : window.location.origin
+            );
             
             // Try to use the task ID from the URL path: /api/audio/{task_id}
             const parts = urlObj.pathname.split("/");
@@ -81,8 +85,8 @@ export function AudioPlayer({ audioUrl, className }: AudioPlayerProps) {
             }
         } catch {
             // Fallback formats
-            if (audioUrl.includes("wav")) filename = "generated-music.wav";
-            else if (audioUrl.includes("flac")) filename = "generated-music.flac";
+            if (fullAudioUrl.includes("wav")) filename = "generated-music.wav";
+            else if (fullAudioUrl.includes("flac")) filename = "generated-music.flac";
         }
         
         link.download = filename;

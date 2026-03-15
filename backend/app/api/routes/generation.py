@@ -2,8 +2,8 @@ from fastapi import APIRouter, HTTPException, Query, Request, Response, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, field_validator
 from typing import Optional
+import json
 import secrets
-
 from app.core.config import settings
 from app.core.limiter import limiter
 from app.services.acestep_client import ACEStepClient, ACEStepError
@@ -122,6 +122,17 @@ _STATUS_MAP = {
 }
 
 
+def _parse_acestep_result(task: dict) -> list[dict]:
+    """Parse the stringified JSON 'result' field from the ACE-Step API."""
+    result_str = task.get("result")
+    if not result_str or not isinstance(result_str, str):
+        return []
+    try:
+        return json.loads(result_str)
+    except json.JSONDecodeError:
+        return []
+
+
 # ── Routes ────────────────────────────────────────────────────────
 
 
@@ -180,10 +191,31 @@ async def get_job_status(task_id: str, request: Request, response: Response):
     }
 
     if mapped_status == "completed":
-        # Build audio proxy URLs from result file paths
-        audio_files = task.get("file", [])
-        if isinstance(audio_files, str):
-            audio_files = [audio_files]
+        parsed_results = _parse_acestep_result(task)
+        audio_files = []
+        metadata = {}
+
+        if parsed_results:
+            # We typically just use the first item's metadata
+            first_item = parsed_results[0]
+            metas = first_item.get("metas", {})
+            metadata = {
+                "prompt": metas.get("prompt", first_item.get("prompt")),
+                "lyrics": metas.get("lyrics", first_item.get("lyrics")),
+                "bpm": metas.get("bpm"),
+                "audio_duration": metas.get("duration"),
+                "key_scale": metas.get("keyscale"),
+                "time_signature": metas.get("timesignature"),
+            }
+            # Filter out empty metadata fields
+            metadata = {k: v for k, v in metadata.items() if v is not None}
+
+            # Collect all file paths
+            for item in parsed_results:
+                f = item.get("file")
+                if f:
+                    # Depending on ACE-Step, it might be a clean string or a raw URL
+                    audio_files.append(f)
 
         if audio_files:
             response_data["audio_url"] = f"/api/audio/{task_id}?index=0"
@@ -192,11 +224,6 @@ async def get_job_status(task_id: str, request: Request, response: Response):
                     f"/api/audio/{task_id}?index={i}" for i in range(len(audio_files))
                 ]
 
-        # Include generation metadata if available
-        metadata = {}
-        for key in ("prompt", "lyrics", "bpm", "audio_duration", "key_scale", "time_signature"):
-            if key in task:
-                metadata[key] = task[key]
         if metadata:
             response_data["metadata"] = metadata
 
@@ -225,15 +252,24 @@ async def download_audio(
         if not tasks:
             raise HTTPException(status_code=404, detail="Task not found")
         task = tasks[0] if isinstance(tasks, list) else tasks
-        
-        audio_files = task.get("file", [])
-        if isinstance(audio_files, str):
-            audio_files = [audio_files]
+        parsed_results = _parse_acestep_result(task)
+        audio_files = []
+        for item in parsed_results:
+            f = item.get("file")
+            if f:
+                audio_files.append(f)
             
         if not audio_files or index >= len(audio_files):
             raise HTTPException(status_code=404, detail="Audio file not found")
             
         safe_path = audio_files[index]
+        # Sometimes the ACE-Step API returns the full endpoint string e.g. /v1/audio?path=...
+        # We need to extract the actual path argument
+        if "?path=" in safe_path:
+            safe_path = safe_path.split("?path=")[1]
+            import urllib.parse
+            safe_path = urllib.parse.unquote(safe_path)
+
         resp = await client.download_audio_stream(safe_path)
     except ACEStepError as e:
         raise HTTPException(status_code=e.status_code, detail=e.message)
