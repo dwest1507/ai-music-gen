@@ -6,12 +6,7 @@
       "changelog-path": "CHANGELOG.md",
       "extra-files": [
         "frontend/package.json",
-        {
-          "type": "regex",
-          "path": "backend/pyproject.toml",
-          "replacement": "version = \"${version}\"",
-          "search": "version = \"[^\"]+\""
-        }
+        "backend/pyproject.toml"
       ]
     }
   },
