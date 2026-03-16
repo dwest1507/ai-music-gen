@@ -170,7 +170,7 @@ export function MusicGeneratorForm({ onJobCreated }: MusicGeneratorFormProps) {
                                 value={genre}
                                 onChange={(e) => setGenre(e.target.value)}
                                 disabled={isLoading}
-                                className="w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                                className="w-full"
                             >
                                 <option value="">Any</option>
                                 <option value="electronic">Electronic</option>
@@ -200,7 +200,7 @@ export function MusicGeneratorForm({ onJobCreated }: MusicGeneratorFormProps) {
                                     value={lyrics}
                                     onChange={(e) => setLyrics(e.target.value)}
                                     disabled={isLoading}
-                                    className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                                    className="flex min-h-[80px] w-full rounded-md border border-input bg-background text-foreground px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
                                 />
                             </div>
 
@@ -214,7 +214,7 @@ export function MusicGeneratorForm({ onJobCreated }: MusicGeneratorFormProps) {
                                         value={vocalLanguage}
                                         onChange={(e) => setVocalLanguage(e.target.value)}
                                         disabled={isLoading}
-                                        className="w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                                        className="w-full"
                                     >
                                         <option value="en">English</option>
                                         <option value="ja">Japanese</option>
