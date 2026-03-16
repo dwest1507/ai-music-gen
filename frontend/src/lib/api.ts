@@ -95,3 +95,24 @@ export interface JobResponse {
     metadata?: JobMetadata;
     error?: string;
 }
+
+export interface ExampleResponse {
+    is_advanced: boolean;
+    prompt: string;
+    lyrics: string;
+    vocal_language: string;
+    bpm?: number;
+    duration: number;
+    key_scale?: string;
+    time_signature?: string;
+    thinking: boolean;
+}
+
+export async function getRandomExample(isAdvanced?: boolean): Promise<ExampleResponse> {
+    const params = new URLSearchParams();
+    if (isAdvanced !== undefined) {
+        params.append("is_advanced", isAdvanced.toString());
+    }
+    const queryString = params.toString() ? `?${params.toString()}` : "";
+    return apiFetch<ExampleResponse>(`/api/examples/random${queryString}`);
+}

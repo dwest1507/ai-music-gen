@@ -1,15 +1,17 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, MockedFunction } from 'vitest';
 import { MusicGeneratorForm } from '@/components/MusicGeneratorForm';
-import { apiFetch } from '@/lib/api';
+import { apiFetch, getRandomExample } from '@/lib/api';
 import React from 'react';
 
 // Mock dependencies
 vi.mock('@/lib/api', () => ({
     apiFetch: vi.fn(),
+    getRandomExample: vi.fn(),
 }));
 
 const mockApiFetch = apiFetch as MockedFunction<typeof apiFetch>;
+const mockGetRandomExample = getRandomExample as MockedFunction<typeof getRandomExample>;
 
 // Mock UI components
 vi.mock('@/components/ui/input', () => ({
@@ -175,5 +177,52 @@ describe('MusicGeneratorForm', () => {
         });
 
         expect(mockOnJobCreated).not.toHaveBeenCalled();
+    });
+
+    it('populates form when "Try an Example" is clicked', async () => {
+        // 1. Test Simple Mode -> Simple Example
+        const simpleExample = {
+            is_advanced: false,
+            prompt: 'Simple Prompt',
+            lyrics: '',
+            vocal_language: 'en',
+            duration: 30,
+            thinking: true,
+        };
+        mockGetRandomExample.mockResolvedValueOnce(simpleExample);
+
+        render(<MusicGeneratorForm onJobCreated={mockOnJobCreated} />);
+
+        const tryExampleButton = screen.getByRole('button', { name: /Try an Example/i });
+        fireEvent.click(tryExampleButton);
+
+        await waitFor(() => {
+            expect(mockGetRandomExample).toHaveBeenCalledWith(false);
+            expect(screen.getByDisplayValue('Simple Prompt')).toBeInTheDocument();
+        });
+
+        // 2. Test Advanced Mode -> Advanced Example
+        const advancedExample = {
+            is_advanced: true,
+            prompt: 'Advanced Prompt',
+            lyrics: 'Advanced Lyrics',
+            vocal_language: 'ja',
+            bpm: 140,
+            duration: 120,
+            thinking: true,
+        };
+        mockGetRandomExample.mockResolvedValueOnce(advancedExample);
+
+        // Switch to advanced mode manually
+        fireEvent.click(screen.getByRole('button', { name: /Advanced/i }));
+
+        fireEvent.click(tryExampleButton);
+
+        await waitFor(() => {
+            expect(mockGetRandomExample).toHaveBeenLastCalledWith(true);
+            expect(screen.getByDisplayValue('Advanced Prompt')).toBeInTheDocument();
+            expect(screen.getByDisplayValue('Advanced Lyrics')).toBeInTheDocument();
+            expect(screen.getByDisplayValue('140')).toBeInTheDocument();
+        });
     });
 });

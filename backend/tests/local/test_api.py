@@ -183,3 +183,28 @@ async def test_list_models(async_client, mock_acestep_client):
 async def test_cancel_job(async_client):
     response = await async_client.delete("/api/jobs/test-task-123")
     assert response.status_code == 204
+
+
+@pytest.mark.asyncio
+async def test_get_random_example(async_client):
+    response = await async_client.get("/api/examples/random")
+    assert response.status_code == 200
+    data = response.json()
+    assert "is_advanced" in data
+    assert "prompt" in data
+
+
+@pytest.mark.asyncio
+async def test_get_random_example_simple(async_client):
+    response = await async_client.get("/api/examples/random?is_advanced=false")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["is_advanced"] is False
+
+
+@pytest.mark.asyncio
+async def test_get_random_example_advanced(async_client):
+    response = await async_client.get("/api/examples/random?is_advanced=true")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["is_advanced"] is True
