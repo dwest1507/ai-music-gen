@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/dwest1507/ai-music-gen/compare/ai-music-gen-v0.2.1...ai-music-gen-v0.3.0) (2026-03-16)
+
+
+### Features
+
+* added "Try an Example" button which auto-populates the user's form with a suggested prompt ([aaa6818](https://github.com/dwest1507/ai-music-gen/commit/aaa6818eece91791bbcf1a3c56503fd996b0baf2))
+
 ## [0.2.1](https://github.com/dwest1507/ai-music-gen/compare/ai-music-gen-v0.2.0...ai-music-gen-v0.2.1) (2026-03-16)
 
 
