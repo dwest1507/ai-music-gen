@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { apiFetch, GenerateRequest, GenerateResponse, getRandomExample } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,8 +10,29 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Music, Settings2, Sparkles } from "lucide-react";
 import { z } from "zod";
 
+const LOADING_MESSAGES = [
+    "Starting Generation...",
+    "Waiting on the backend to warm up...",
+    "The backend goes idle after 5 mins of inactivity...",
+    "I did this to save money...",
+    "I'm not made of money...",
+    "After all, this app is free...",
+    "So quit your complaining...",
+    "GPUs don't grow on trees, you know...",
+    "But yeah, this is taking a while...",
+    "Loading... loading... still loading...",
+    "The AI is composing a masterpiece, OK?",
+    "Please enjoy this moment of zen...",
+    "Doo doo doo...",
+    "Still here? You must really want this song...",
+    "The servers are literally spinning up...",
+    "Almost there... probably...",
+    "Your patience is admirable, truly...",
+    "Any minute now...",
+];
+
 const generateSchema = z.object({
-    prompt: z.string().min(3, "Prompt must be at least 3 characters").max(500, "Prompt must be less than 500 characters"),
+    prompt: z.string().min(3, "Prompt must be at least 3 characters").max(1000, "Prompt must be less than 1000 characters"),
     duration: z.coerce.number().int().min(10).max(600),
     genre: z.string().optional(),
     lyrics: z.string().max(5000, "Lyrics must be less than 5000 characters").optional(),
@@ -52,6 +73,20 @@ export function MusicGeneratorForm({ onJobCreated }: MusicGeneratorFormProps) {
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [lastSubmitTime, setLastSubmitTime] = useState(0);
+    const [loadingMessageIndex, setLoadingMessageIndex] = useState(0);
+
+    useEffect(() => {
+        if (!isLoading) {
+            setLoadingMessageIndex(0);
+            return;
+        }
+        const interval = setInterval(() => {
+            setLoadingMessageIndex(prev =>
+                prev < LOADING_MESSAGES.length - 1 ? prev + 1 : prev
+            );
+        }, 10000);
+        return () => clearInterval(interval);
+    }, [isLoading]);
 
     const handleTryExample = async () => {
         setIsLoading(true);
@@ -368,7 +403,7 @@ export function MusicGeneratorForm({ onJobCreated }: MusicGeneratorFormProps) {
                     )}
 
                     <Button type="submit" className="w-full" disabled={isLoading} isLoading={isLoading}>
-                        {isLoading ? "Starting Generation..." : "Generate Music"}
+                        {isLoading ? LOADING_MESSAGES[loadingMessageIndex] : "Generate Music"}
                     </Button>
                 </form>
             </CardContent>

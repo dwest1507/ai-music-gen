@@ -21,7 +21,7 @@ EXAMPLES_ROOT = Path(__file__).parent.parent.parent.parent / "examples"
 
 
 class GenerationRequest(BaseModel):
-    prompt: str = Field(..., min_length=1, max_length=500)
+    prompt: str = Field(..., min_length=1, max_length=1000)
     lyrics: str = Field("", max_length=5000)
     duration: float = Field(60, ge=10, le=600)
     genre: Optional[str] = None

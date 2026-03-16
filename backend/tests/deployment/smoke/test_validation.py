@@ -22,7 +22,7 @@ def test_generate_missing_prompt(api_url, session):
 @pytest.mark.smoke
 def test_generate_prompt_too_long(api_url, session):
     """Verify API rejects prompts exceeding max length."""
-    long_prompt = "a" * 501  # Max is 500
+    long_prompt = "a" * 1001  # Max is 1000
 
     response = session.post(
         f"{api_url}/api/generate", json={"prompt": long_prompt, "duration": 60}

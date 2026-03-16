@@ -1,12 +1,33 @@
 "use client";
 
 import * as React from "react";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { apiFetch, JobResponse } from "@/lib/api";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Loader2, CheckCircle2, XCircle, AlertCircle, Clock, Activity, Hash, FileAudio, Music } from "lucide-react";
 import { AudioPlayer } from "@/components/AudioPlayer";
 import { Badge } from "@/components/ui/badge";
+
+const GENERATING_MESSAGES = [
+    "Generating Music...",
+    "The backend is up! Now the AI is doing its thing...",
+    "Longer prompts take more time to process...",
+    "The model is crafting your audio, note by note...",
+    "Still generating... this is the hard part...",
+    "Composing, mixing, mastering... all at once...",
+    "Your prompt was pretty complex, huh?",
+    "The AI is really thinking about this one...",
+    "Fine. It's being creative. Let it cook.",
+    "A great song takes time. Even for robots.",
+    "Did you use a lot of lyrics? That's probably why...",
+    "The GPU is sweating a little, not gonna lie...",
+    "We're talking real-time music synthesis here...",
+    "Beethoven took years. This'll take minutes. Maybe.",
+    "The AI has excellent taste and refuses to rush...",
+    "Still running... have you tried a shorter prompt?",
+    "I mean, it IS generating something spectacular...",
+    "Any minute now...",
+];
 
 interface JobStatusProps {
     jobId: string;
@@ -16,6 +37,8 @@ export function JobStatus({ jobId }: JobStatusProps) {
     const [job, setJob] = useState<JobResponse | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [isPolling, setIsPolling] = useState(true);
+    const [generatingMessageIndex, setGeneratingMessageIndex] = useState(0);
+    const generatingIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
     // Poll for job updates
     useEffect(() => {
@@ -77,6 +100,31 @@ export function JobStatus({ jobId }: JobStatusProps) {
         };
     }, [jobId, isPolling]);
 
+    // Cycle generating messages every 10s while queued or processing
+    useEffect(() => {
+        const isActive = job?.status === "queued" || job?.status === "processing";
+        if (!isActive) {
+            if (generatingIntervalRef.current) {
+                clearInterval(generatingIntervalRef.current);
+                generatingIntervalRef.current = null;
+            }
+            setGeneratingMessageIndex(0);
+            return;
+        }
+        if (generatingIntervalRef.current) return; // already running
+        generatingIntervalRef.current = setInterval(() => {
+            setGeneratingMessageIndex(prev =>
+                prev < GENERATING_MESSAGES.length - 1 ? prev + 1 : prev
+            );
+        }, 10000);
+        return () => {
+            if (generatingIntervalRef.current) {
+                clearInterval(generatingIntervalRef.current);
+                generatingIntervalRef.current = null;
+            }
+        };
+    }, [job?.status]);
+
     if (error) {
         return (
             <Card className="w-full max-w-2xl mx-auto border-destructive/50 bg-destructive/5">
@@ -112,8 +160,8 @@ export function JobStatus({ jobId }: JobStatusProps) {
                     {job.status === "failed" && <XCircle className="w-5 h-5 text-red-500" />}
 
                     <span className="capitalize">
-                        {job.status === "queued" && "Waiting in Queue..."}
-                        {job.status === "processing" && "Generating Music..."}
+                        {job.status === "queued" && GENERATING_MESSAGES[generatingMessageIndex]}
+                        {job.status === "processing" && GENERATING_MESSAGES[generatingMessageIndex]}
                         {job.status === "completed" && "Generation Complete!"}
                         {job.status === "failed" && "Generation Failed"}
                     </span>
