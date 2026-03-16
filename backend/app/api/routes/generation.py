@@ -4,12 +4,18 @@ from pydantic import BaseModel, Field, field_validator
 from typing import Optional
 import json
 import secrets
+import random
+from pathlib import Path
 from app.core.config import settings
 from app.core.limiter import limiter
 from app.services.acestep_client import ACEStepClient, ACEStepError
 
 router = APIRouter()
 SESSION_COOKIE_NAME = "session_id"
+
+# Path to the examples directory relative to this file
+# backend/app/api/routes/generation.py -> backend/app/api/routes -> backend/app/api -> backend/app -> backend -> project_root
+EXAMPLES_ROOT = Path(__file__).parent.parent.parent.parent / "examples"
 
 # ── Pydantic models ──────────────────────────────────────────────
 
@@ -60,6 +66,18 @@ class RandomSampleRequest(BaseModel):
     """Optional parameters for random sample generation."""
 
     sample_query: Optional[str] = ""
+
+
+class ExampleResponse(BaseModel):
+    is_advanced: bool
+    prompt: str
+    lyrics: str = ""
+    vocal_language: str = "en"
+    bpm: Optional[int] = None
+    duration: int = 60
+    key_scale: Optional[str] = None
+    time_signature: Optional[str] = None
+    thinking: bool = True
 
 
 # ── Helpers ──────────────────────────────────────────────────────
@@ -356,3 +374,71 @@ async def cancel_job(task_id: str, request: Request, response: Response):
     """
     # No upstream cancel available; return success
     return Response(status_code=204)
+
+
+@router.get("/examples/random", response_model=ExampleResponse)
+async def get_random_example(
+    is_advanced: Optional[bool] = Query(
+        None, description="If provided, only return examples for this mode."
+    ),
+):
+    """Pick a random example from the curated collection and map its fields."""
+    try:
+        if is_advanced is True:
+            mode = "advanced"
+        elif is_advanced is False:
+            mode = "simple"
+        else:
+            # 50/50 chance of simple or advanced
+            mode = random.choice(["simple", "advanced"])
+
+        if mode == "simple":
+            subdir = EXAMPLES_ROOT / "simple_mode"
+        else:
+            subdir = EXAMPLES_ROOT / "text2music"
+
+        if not subdir.exists():
+            raise HTTPException(
+                status_code=404, detail=f"Example directory {subdir} not found"
+            )
+
+        files = list(subdir.glob("*.json"))
+        if not files:
+            raise HTTPException(status_code=404, detail="No example files found")
+
+        random_file = random.choice(files)
+        with open(random_file, "r") as f:
+            data = json.load(f)
+
+        if mode == "simple":
+            vocal_lang = data.get("vocal_language", "en")
+            if vocal_lang == "unknown":
+                vocal_lang = "en"
+
+            return ExampleResponse(
+                is_advanced=False,
+                prompt=data.get("description", ""),
+                vocal_language=vocal_lang,
+                lyrics="[Instrumental]" if data.get("instrumental") else "",
+            )
+        else:
+            vocal_lang = data.get("language", "en")
+            if vocal_lang == "unknown":
+                vocal_lang = "en"
+
+            return ExampleResponse(
+                is_advanced=True,
+                prompt=data.get("caption", ""),
+                lyrics=data.get("lyrics", ""),
+                vocal_language=vocal_lang,
+                bpm=data.get("bpm"),
+                duration=data.get("duration", 60),
+                key_scale=data.get("keyscale"),
+                time_signature=data.get("timesignature"),
+                thinking=data.get("think", True),
+            )
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to fetch example: {str(e)}"
+        )

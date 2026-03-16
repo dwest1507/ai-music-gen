@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useState } from "react";
-import { apiFetch, GenerateRequest, GenerateResponse } from "@/lib/api";
+import { apiFetch, GenerateRequest, GenerateResponse, getRandomExample } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
@@ -52,6 +52,28 @@ export function MusicGeneratorForm({ onJobCreated }: MusicGeneratorFormProps) {
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [lastSubmitTime, setLastSubmitTime] = useState(0);
+
+    const handleTryExample = async () => {
+        setIsLoading(true);
+        setError(null);
+        try {
+            const example = await getRandomExample(isAdvanced);
+            setPrompt(example.prompt);
+            setLyrics(example.lyrics);
+            setVocalLanguage(example.vocal_language);
+            setDuration(example.duration.toString());
+            setBpm(example.bpm?.toString() || "");
+            setKeyScale(example.key_scale || "");
+            setTimeSignature(example.time_signature || "");
+            setThinking(example.thinking);
+            setIsAdvanced(example.is_advanced);
+        } catch (err: unknown) {
+            setError("Failed to fetch example prompt.");
+            console.error(err);
+        } finally {
+            setIsLoading(false);
+        }
+    };
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -119,16 +141,29 @@ export function MusicGeneratorForm({ onJobCreated }: MusicGeneratorFormProps) {
                         Describe the music you want to generate using AI.
                     </CardDescription>
                 </div>
-                <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setIsAdvanced(!isAdvanced)}
-                    className="flex items-center gap-2"
-                >
-                    <Settings2 className="w-4 h-4" />
-                    {isAdvanced ? "Simple Mode" : "Advanced"}
-                </Button>
+                <div className="flex gap-2">
+                    <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={handleTryExample}
+                        disabled={isLoading}
+                        className="flex items-center gap-2 text-purple-600 border-purple-200 hover:bg-purple-50 hover:text-purple-700"
+                    >
+                        <Sparkles className="w-4 h-4" />
+                        Try an Example
+                    </Button>
+                    <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setIsAdvanced(!isAdvanced)}
+                        className="flex items-center gap-2"
+                    >
+                        <Settings2 className="w-4 h-4" />
+                        {isAdvanced ? "Simple Mode" : "Advanced"}
+                    </Button>
+                </div>
             </CardHeader>
             <CardContent>
                 <form onSubmit={handleSubmit} className="space-y-4">
@@ -145,7 +180,7 @@ export function MusicGeneratorForm({ onJobCreated }: MusicGeneratorFormProps) {
                         />
                     </div>
 
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-3 gap-4">
                         <div className="space-y-2">
                             <label htmlFor="duration" className="text-sm font-medium leading-none">
                                 Duration (seconds)
@@ -181,6 +216,26 @@ export function MusicGeneratorForm({ onJobCreated }: MusicGeneratorFormProps) {
                                 <option value="cinematic">Cinematic</option>
                             </Select>
                         </div>
+
+                        <div className="space-y-2">
+                            <label htmlFor="simpleVocalLanguage" className="text-sm font-medium leading-none">
+                                Language
+                            </label>
+                            <Select
+                                id="simpleVocalLanguage"
+                                value={vocalLanguage}
+                                onChange={(e) => setVocalLanguage(e.target.value)}
+                                disabled={isLoading}
+                                className="w-full"
+                            >
+                                <option value="en">English</option>
+                                <option value="ja">Japanese</option>
+                                <option value="ko">Korean</option>
+                                <option value="zh">Chinese</option>
+                                <option value="fr">French</option>
+                                <option value="es">Spanish</option>
+                            </Select>
+                        </div>
                     </div>
 
                     {isAdvanced && (
@@ -204,27 +259,7 @@ export function MusicGeneratorForm({ onJobCreated }: MusicGeneratorFormProps) {
                                 />
                             </div>
 
-                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                                <div className="space-y-2">
-                                    <label htmlFor="vocalLanguage" className="text-sm font-medium leading-none">
-                                        Language
-                                    </label>
-                                    <Select
-                                        id="vocalLanguage"
-                                        value={vocalLanguage}
-                                        onChange={(e) => setVocalLanguage(e.target.value)}
-                                        disabled={isLoading}
-                                        className="w-full"
-                                    >
-                                        <option value="en">English</option>
-                                        <option value="ja">Japanese</option>
-                                        <option value="ko">Korean</option>
-                                        <option value="zh">Chinese</option>
-                                        <option value="fr">French</option>
-                                        <option value="es">Spanish</option>
-                                    </Select>
-                                </div>
-
+                            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                                 <div className="space-y-2">
                                     <label htmlFor="bpm" className="text-sm font-medium leading-none">
                                         BPM / Tempo

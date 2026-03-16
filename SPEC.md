@@ -125,6 +125,7 @@ Supports optional API key via:
 | FR-12 | User can select between Simple Mode (prompt-only) and Advanced Mode (full controls) | Should |
 | FR-13 | System provides a "random sample" / "inspire me" feature using `/create_random_sample` | Could |
 | FR-14 | System supports LM-enhanced generation (`thinking=true`) for higher quality output | Should |
+| FR-15 | User can click a button to fill the form with a random example prompt from the curated collection | Should |
 
 ### 4.2 Non-Functional Requirements
 
