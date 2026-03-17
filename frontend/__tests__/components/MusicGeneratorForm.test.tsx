@@ -197,6 +197,44 @@ describe('MusicGeneratorForm', () => {
         expect(mockOnJobCreated).not.toHaveBeenCalled();
     });
 
+    it('shows error when "Try an Example" API call fails', async () => {
+        mockGetRandomExample.mockRejectedValue(new Error('Network error'));
+
+        render(<MusicGeneratorForm onJobCreated={mockOnJobCreated} />);
+
+        fireEvent.click(screen.getByRole('button', { name: /Try an Example/i }));
+
+        await waitFor(() => {
+            expect(screen.getByText(/Failed to fetch example/i)).toBeInTheDocument();
+        });
+    });
+
+    it('enforces 5-second cooldown between submissions', async () => {
+        mockApiFetch.mockResolvedValue({ task_id: 'job-1', status: 'queued' });
+
+        const now = Date.now();
+        vi.spyOn(Date, 'now')
+            .mockReturnValueOnce(now)         // first submit records time
+            .mockReturnValueOnce(now + 1000); // second submit within 5 seconds
+
+        render(<MusicGeneratorForm onJobCreated={mockOnJobCreated} />);
+
+        const promptInput = screen.getByRole('textbox', { name: /Prompt/i });
+        fireEvent.change(promptInput, { target: { value: 'A cool track' } });
+        fireEvent.click(screen.getByRole('button', { name: /Generate Music/i }));
+
+        await waitFor(() => expect(mockApiFetch).toHaveBeenCalledTimes(1));
+
+        // Second submit within cooldown window
+        fireEvent.click(screen.getByRole('button', { name: /Generate Music/i }));
+
+        await waitFor(() => {
+            expect(screen.getByText(/Please wait a few seconds/i)).toBeInTheDocument();
+        });
+
+        vi.restoreAllMocks();
+    });
+
     it('populates form when "Try an Example" is clicked', async () => {
         // 1. Test Simple Mode -> Simple Example
         const simpleExample = {
