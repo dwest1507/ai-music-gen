@@ -7,9 +7,9 @@ A portfolio project demonstrating full-stack AI engineering across two linked re
 This project is comprised of two components:
 
 ### Component 1: ACE-Step 1.5 Modal Deployment (fork)
-> Repository: [ACE-Step-1.5-modal](https://github.com/dwest1507/ACE-Step-1.5-modal) (fork)
+> Repository: [ACE-Step-1.5-modal](https://github.com/dwest1507/ACE-Step-1.5-modal/tree/feature/modal-support) (fork)
 
-The [ACE-Step v1.5](https://github.com/ACE-Step/ACE-Step-1.5) open-source music generation model runs locally by default and has no cloud deployment path out of the box. This [fork](https://github.com/dwest1507/ACE-Step-1.5-modal) adds `modal_app.py` — a serverless deployment script that:
+The [ACE-Step v1.5](https://github.com/ACE-Step/ACE-Step-1.5) open-source music generation model runs locally by default and has no cloud deployment path out of the box. This [fork](https://github.com/dwest1507/ACE-Step-1.5-modal/tree/feature/modal-support) adds `modal_app.py` — a serverless deployment script that:
 
 - Packages the model into a Modal-managed Docker image with GPU support.
 - Downloads and caches model weights (Hugging Face) during the image build step to minimize cold-start time.
