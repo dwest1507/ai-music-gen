@@ -22,7 +22,7 @@ def test_generate_missing_prompt(api_url, session):
 @pytest.mark.smoke
 def test_generate_prompt_too_long(api_url, session):
     """Verify API rejects prompts exceeding max length."""
-    long_prompt = "a" * 501  # Max is 500
+    long_prompt = "a" * 1001  # Max is 1000
 
     response = session.post(
         f"{api_url}/api/generate", json={"prompt": long_prompt, "duration": 60}
@@ -45,12 +45,12 @@ def test_generate_invalid_duration(api_url, session):
         f"Expected 422 for duration < 10, got {response.status_code}"
     )
 
-    # Test duration too long (> 600)
+    # Test duration too long (> 300, i.e. > 5 minutes)
     response = session.post(
-        f"{api_url}/api/generate", json={"prompt": "test", "duration": 700}
+        f"{api_url}/api/generate", json={"prompt": "test", "duration": 301}
     )
     assert response.status_code == 422, (
-        f"Expected 422 for duration > 600, got {response.status_code}"
+        f"Expected 422 for duration > 300, got {response.status_code}"
     )
 
 

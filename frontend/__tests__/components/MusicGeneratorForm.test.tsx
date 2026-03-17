@@ -34,11 +34,13 @@ vi.mock('@/components/ui/card', () => ({
     CardContent: ({ children }: React.ComponentProps<'div'>) => <div>{children}</div>,
 }));
 
-// Mock icons
+// Mock icons — include all icons used by the component
 vi.mock('lucide-react', () => ({
     Music: () => <svg data-testid="music-icon" />,
     Settings2: () => <svg data-testid="settings-icon" />,
     Sparkles: () => <svg data-testid="sparkles-icon" />,
+    SlidersHorizontal: () => <svg data-testid="sliders-icon" />,
+    HelpCircle: () => <svg data-testid="help-icon" />,
 }));
 
 describe('MusicGeneratorForm', () => {
@@ -52,12 +54,20 @@ describe('MusicGeneratorForm', () => {
         render(<MusicGeneratorForm onJobCreated={mockOnJobCreated} />);
 
         expect(screen.getByText('Create Music')).toBeInTheDocument();
-        expect(screen.getByRole('textbox', { name: /^Prompt$/i })).toBeInTheDocument();
-        expect(screen.getByLabelText(/Duration/i)).toBeInTheDocument();
+        // Prompt is a textarea; label text is "Prompt *"
+        expect(screen.getByRole('textbox', { name: /Prompt/i })).toBeInTheDocument();
+        // Duration is split into two inputs with aria-labels
+        expect(screen.getByLabelText(/Minutes/i)).toBeInTheDocument();
+        expect(screen.getByLabelText(/Seconds/i)).toBeInTheDocument();
         expect(screen.getByRole('button', { name: /Generate Music/i })).toBeInTheDocument();
 
         // Advanced fields should not be visible
         expect(screen.queryByRole('textbox', { name: /Lyrics/i })).not.toBeInTheDocument();
+    });
+
+    it('shows required footnote', () => {
+        render(<MusicGeneratorForm onJobCreated={mockOnJobCreated} />);
+        expect(screen.getByText(/Required/i)).toBeInTheDocument();
     });
 
     it('toggles advanced mode and shows advanced fields', () => {
@@ -68,7 +78,7 @@ describe('MusicGeneratorForm', () => {
 
         // Advanced fields should now be visible
         expect(screen.getByRole('textbox', { name: /Lyrics/i })).toBeInTheDocument();
-        expect(screen.getByLabelText(/BPM/i)).toBeInTheDocument();
+        expect(screen.getByRole('spinbutton', { name: /BPM/i })).toBeInTheDocument();
         expect(screen.getByLabelText(/Time Sig/i)).toBeInTheDocument();
 
         // The toggle button should say Simple Mode
@@ -78,7 +88,7 @@ describe('MusicGeneratorForm', () => {
     it('displays validation error for short prompt', async () => {
         render(<MusicGeneratorForm onJobCreated={mockOnJobCreated} />);
 
-        const promptInput = screen.getByRole('textbox', { name: /^Prompt$/i });
+        const promptInput = screen.getByRole('textbox', { name: /Prompt/i });
         fireEvent.change(promptInput, { target: { value: 'Hi' } }); // Too short
 
         const submitButton = screen.getByRole('button', { name: /Generate Music/i });
@@ -99,8 +109,10 @@ describe('MusicGeneratorForm', () => {
 
         render(<MusicGeneratorForm onJobCreated={mockOnJobCreated} />);
 
-        fireEvent.change(screen.getByRole('textbox', { name: /^Prompt$/i }), { target: { value: 'A cool jazz track' } });
-        fireEvent.change(screen.getByLabelText(/Duration/i), { target: { value: '30' } });
+        fireEvent.change(screen.getByRole('textbox', { name: /Prompt/i }), { target: { value: 'A cool jazz track' } });
+        // Set duration to 0m 30s = 30 seconds
+        fireEvent.change(screen.getByLabelText(/Minutes/i), { target: { value: '0' } });
+        fireEvent.change(screen.getByLabelText(/Seconds/i), { target: { value: '30' } });
 
         fireEvent.click(screen.getByRole('button', { name: /Generate Music/i }));
 
@@ -109,13 +121,15 @@ describe('MusicGeneratorForm', () => {
                 method: 'POST',
                 body: JSON.stringify({
                     prompt: 'A cool jazz track',
-                    duration: 30, // Assuming duration was cast to Number automatically or manually
-                    vocal_language: "en",
+                    duration: 30,
+                    vocal_language: 'en',
+                    audio_format: 'mp3',
                     thinking: true,
                     use_format: false,
                     inference_steps: 8,
                     batch_size: 1,
-                }), // Includes default values for state fields
+                    infer_method: 'ode',
+                }),
             });
         });
 
@@ -135,10 +149,12 @@ describe('MusicGeneratorForm', () => {
         // Turn on advanced
         fireEvent.click(screen.getByRole('button', { name: /Advanced/i }));
 
-        fireEvent.change(screen.getByRole('textbox', { name: /^Prompt$/i }), { target: { value: 'An advanced jazz track' } });
-        fireEvent.change(screen.getByLabelText(/Duration/i), { target: { value: '120' } });
+        fireEvent.change(screen.getByRole('textbox', { name: /Prompt/i }), { target: { value: 'An advanced jazz track' } });
+        // Set duration to 2m 0s = 120 seconds
+        fireEvent.change(screen.getByLabelText(/Minutes/i), { target: { value: '2' } });
+        fireEvent.change(screen.getByLabelText(/Seconds/i), { target: { value: '0' } });
         fireEvent.change(screen.getByRole('textbox', { name: /Lyrics/i }), { target: { value: 'Testing lyrics' } });
-        fireEvent.change(screen.getByLabelText(/BPM/i), { target: { value: '120' } });
+        fireEvent.change(screen.getByRole('spinbutton', { name: /BPM/i }), { target: { value: '120' } });
 
         fireEvent.click(screen.getByRole('button', { name: /Generate Music/i }));
 
@@ -150,11 +166,13 @@ describe('MusicGeneratorForm', () => {
                     duration: 120,
                     lyrics: 'Testing lyrics',
                     vocal_language: 'en',
+                    audio_format: 'mp3',
                     thinking: true,
                     use_format: false,
                     bpm: 120,
                     inference_steps: 8,
                     batch_size: 1,
+                    infer_method: 'ode',
                 }),
             });
         });
@@ -169,7 +187,7 @@ describe('MusicGeneratorForm', () => {
 
         render(<MusicGeneratorForm onJobCreated={mockOnJobCreated} />);
 
-        fireEvent.change(screen.getByRole('textbox', { name: /^Prompt$/i }), { target: { value: 'Valid prompt' } });
+        fireEvent.change(screen.getByRole('textbox', { name: /Prompt/i }), { target: { value: 'Valid prompt' } });
         fireEvent.click(screen.getByRole('button', { name: /Generate Music/i }));
 
         await waitFor(() => {
@@ -179,6 +197,44 @@ describe('MusicGeneratorForm', () => {
         expect(mockOnJobCreated).not.toHaveBeenCalled();
     });
 
+    it('shows error when "Try an Example" API call fails', async () => {
+        mockGetRandomExample.mockRejectedValue(new Error('Network error'));
+
+        render(<MusicGeneratorForm onJobCreated={mockOnJobCreated} />);
+
+        fireEvent.click(screen.getByRole('button', { name: /Try an Example/i }));
+
+        await waitFor(() => {
+            expect(screen.getByText(/Failed to fetch example/i)).toBeInTheDocument();
+        });
+    });
+
+    it('enforces 5-second cooldown between submissions', async () => {
+        mockApiFetch.mockResolvedValue({ task_id: 'job-1', status: 'queued' });
+
+        const now = Date.now();
+        vi.spyOn(Date, 'now')
+            .mockReturnValueOnce(now)         // first submit records time
+            .mockReturnValueOnce(now + 1000); // second submit within 5 seconds
+
+        render(<MusicGeneratorForm onJobCreated={mockOnJobCreated} />);
+
+        const promptInput = screen.getByRole('textbox', { name: /Prompt/i });
+        fireEvent.change(promptInput, { target: { value: 'A cool track' } });
+        fireEvent.click(screen.getByRole('button', { name: /Generate Music/i }));
+
+        await waitFor(() => expect(mockApiFetch).toHaveBeenCalledTimes(1));
+
+        // Second submit within cooldown window
+        fireEvent.click(screen.getByRole('button', { name: /Generate Music/i }));
+
+        await waitFor(() => {
+            expect(screen.getByText(/Please wait a few seconds/i)).toBeInTheDocument();
+        });
+
+        vi.restoreAllMocks();
+    });
+
     it('populates form when "Try an Example" is clicked', async () => {
         // 1. Test Simple Mode -> Simple Example
         const simpleExample = {
@@ -186,7 +242,7 @@ describe('MusicGeneratorForm', () => {
             prompt: 'Simple Prompt',
             lyrics: '',
             vocal_language: 'en',
-            duration: 30,
+            duration: 30, // 0m 30s
             thinking: true,
         };
         mockGetRandomExample.mockResolvedValueOnce(simpleExample);
@@ -199,6 +255,9 @@ describe('MusicGeneratorForm', () => {
         await waitFor(() => {
             expect(mockGetRandomExample).toHaveBeenCalledWith(false);
             expect(screen.getByDisplayValue('Simple Prompt')).toBeInTheDocument();
+            // duration 30s → 0m 30s
+            expect(screen.getByLabelText(/Minutes/i)).toHaveValue(0);
+            expect(screen.getByLabelText(/Seconds/i)).toHaveValue(30);
         });
 
         // 2. Test Advanced Mode -> Advanced Example
@@ -208,7 +267,7 @@ describe('MusicGeneratorForm', () => {
             lyrics: 'Advanced Lyrics',
             vocal_language: 'ja',
             bpm: 140,
-            duration: 120,
+            duration: 120, // 2m 0s
             thinking: true,
         };
         mockGetRandomExample.mockResolvedValueOnce(advancedExample);
@@ -223,6 +282,9 @@ describe('MusicGeneratorForm', () => {
             expect(screen.getByDisplayValue('Advanced Prompt')).toBeInTheDocument();
             expect(screen.getByDisplayValue('Advanced Lyrics')).toBeInTheDocument();
             expect(screen.getByDisplayValue('140')).toBeInTheDocument();
+            // duration 120s → 2m 0s
+            expect(screen.getByLabelText(/Minutes/i)).toHaveValue(2);
+            expect(screen.getByLabelText(/Seconds/i)).toHaveValue(0);
         });
     });
 });

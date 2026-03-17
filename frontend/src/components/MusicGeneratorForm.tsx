@@ -1,18 +1,39 @@
 "use client";
 
 import * as React from "react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { apiFetch, GenerateRequest, GenerateResponse, getRandomExample } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Music, Settings2, Sparkles } from "lucide-react";
+import { HelpCircle, Music, Settings2, SlidersHorizontal, Sparkles } from "lucide-react";
 import { z } from "zod";
 
+const LOADING_MESSAGES = [
+    "Starting Generation...",
+    "Waiting on the backend to warm up...",
+    "The backend goes idle after 5 mins of inactivity...",
+    "I did this to save money...",
+    "I'm not made of money...",
+    "After all, this app is free...",
+    "So quit your complaining...",
+    "GPUs don't grow on trees, you know...",
+    "But yeah, this is taking a while...",
+    "Loading... loading... still loading...",
+    "The AI is composing a masterpiece, OK?",
+    "Please enjoy this moment of zen...",
+    "Doo doo doo...",
+    "Still here? You must really want this song...",
+    "The servers are literally spinning up...",
+    "Almost there... probably...",
+    "Your patience is admirable, truly...",
+    "Any minute now...",
+];
+
 const generateSchema = z.object({
-    prompt: z.string().min(3, "Prompt must be at least 3 characters").max(500, "Prompt must be less than 500 characters"),
-    duration: z.coerce.number().int().min(10).max(600),
+    prompt: z.string().min(3, "Prompt must be at least 3 characters").max(1000, "Prompt must be less than 1000 characters"),
+    duration: z.coerce.number().int().min(10).max(300),
     genre: z.string().optional(),
     lyrics: z.string().max(5000, "Lyrics must be less than 5000 characters").optional(),
     vocal_language: z.string().optional(),
@@ -24,7 +45,19 @@ const generateSchema = z.object({
     time_signature: z.string().optional(),
     inference_steps: z.coerce.number().int().min(1).max(20).optional(),
     batch_size: z.coerce.number().int().min(1).max(4).optional(),
+    infer_method: z.enum(["ode", "sde"]).optional(),
 });
+
+function FieldTooltip({ text }: { text: string }) {
+    return (
+        <span className="relative group inline-flex items-center ml-1.5 align-middle">
+            <HelpCircle className="w-3.5 h-3.5 text-muted-foreground cursor-help" />
+            <span className="pointer-events-none absolute left-1/2 -translate-x-1/2 bottom-full mb-2 hidden group-hover:block z-50 w-60 rounded-md bg-popover text-popover-foreground text-xs shadow-md border border-border px-2.5 py-2 leading-relaxed">
+                {text}
+            </span>
+        </span>
+    );
+}
 
 interface MusicGeneratorFormProps {
     onJobCreated: (jobId: string) => void;
@@ -35,12 +68,14 @@ export function MusicGeneratorForm({ onJobCreated }: MusicGeneratorFormProps) {
 
     // Simple state
     const [prompt, setPrompt] = useState("");
-    const [duration, setDuration] = useState("60");
+    const [durationMins, setDurationMins] = useState("1");
+    const [durationSecs, setDurationSecs] = useState("0");
     const [genre, setGenre] = useState("");
 
     // Advanced state
     const [lyrics, setLyrics] = useState("");
     const [vocalLanguage, setVocalLanguage] = useState("en");
+    const [audioFormat, setAudioFormat] = useState<"mp3" | "wav" | "flac">("mp3");
     const [thinking, setThinking] = useState(true);
     const [useFormat, setUseFormat] = useState(false);
     const [bpm, setBpm] = useState("");
@@ -48,10 +83,25 @@ export function MusicGeneratorForm({ onJobCreated }: MusicGeneratorFormProps) {
     const [timeSignature, setTimeSignature] = useState("");
     const [inferenceSteps, setInferenceSteps] = useState("8");
     const [batchSize, setBatchSize] = useState("1");
+    const [inferMethod, setInferMethod] = useState<"ode" | "sde">("ode");
 
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [lastSubmitTime, setLastSubmitTime] = useState(0);
+    const [loadingMessageIndex, setLoadingMessageIndex] = useState(0);
+
+    useEffect(() => {
+        if (!isLoading) {
+            setLoadingMessageIndex(0);
+            return;
+        }
+        const interval = setInterval(() => {
+            setLoadingMessageIndex(prev =>
+                prev < LOADING_MESSAGES.length - 1 ? prev + 1 : prev
+            );
+        }, 10000);
+        return () => clearInterval(interval);
+    }, [isLoading]);
 
     const handleTryExample = async () => {
         setIsLoading(true);
@@ -61,7 +111,8 @@ export function MusicGeneratorForm({ onJobCreated }: MusicGeneratorFormProps) {
             setPrompt(example.prompt);
             setLyrics(example.lyrics);
             setVocalLanguage(example.vocal_language);
-            setDuration(example.duration.toString());
+            setDurationMins(Math.floor(example.duration / 60).toString());
+            setDurationSecs((example.duration % 60).toString());
             setBpm(example.bpm?.toString() || "");
             setKeyScale(example.key_scale || "");
             setTimeSignature(example.time_signature || "");
@@ -95,10 +146,11 @@ export function MusicGeneratorForm({ onJobCreated }: MusicGeneratorFormProps) {
             // Validate
             const payloadInput = {
                 prompt,
-                duration,
+                duration: (parseInt(durationMins || "0") * 60) + parseInt(durationSecs || "0"),
                 genre: genre || undefined,
                 lyrics: lyrics || undefined,
                 vocal_language: vocalLanguage,
+                audio_format: audioFormat,
                 thinking,
                 use_format: useFormat,
                 bpm: bpm ? parseInt(bpm) : undefined,
@@ -106,6 +158,7 @@ export function MusicGeneratorForm({ onJobCreated }: MusicGeneratorFormProps) {
                 time_signature: timeSignature || undefined,
                 inference_steps: parseInt(inferenceSteps),
                 batch_size: parseInt(batchSize),
+                infer_method: inferMethod,
             };
 
             const payload = generateSchema.parse(payloadInput) as GenerateRequest;
@@ -168,58 +221,99 @@ export function MusicGeneratorForm({ onJobCreated }: MusicGeneratorFormProps) {
             <CardContent>
                 <form onSubmit={handleSubmit} className="space-y-4">
                     <div className="space-y-2">
-                        <label htmlFor="prompt" className="text-sm font-medium leading-none">
-                            Prompt
+                        <label htmlFor="prompt" className="text-sm font-medium leading-none flex items-center">
+                            Prompt <span className="text-destructive ml-0.5">*</span>
+                            <FieldTooltip text="Describe the music you want. Include genre, mood, instruments, and energy level for best results. E.g. 'upbeat electronic dance music with heavy bass and synth leads.'" />
                         </label>
-                        <Input
+                        <textarea
                             id="prompt"
                             placeholder="E.g., A lo-fi hip hop beat for studying..."
                             value={prompt}
                             onChange={(e) => setPrompt(e.target.value)}
                             disabled={isLoading}
+                            className="flex min-h-[60px] w-full resize-y rounded-md border border-input bg-background text-foreground px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
                         />
                     </div>
 
                     <div className="grid grid-cols-3 gap-4">
                         <div className="space-y-2">
-                            <label htmlFor="duration" className="text-sm font-medium leading-none">
-                                Duration (seconds)
+                            <label className="text-sm font-medium leading-none flex items-center">
+                                Duration <span className="text-destructive ml-0.5">*</span>
+                                <FieldTooltip text="Target audio length (10s–5m). 1 minute is a good default. For vocal tracks, match the length to your lyrics." />
                             </label>
-                            <Input
-                                id="duration"
-                                type="number"
-                                min="10"
-                                max="600"
-                                value={duration}
-                                onChange={(e) => setDuration(e.target.value)}
-                                disabled={isLoading}
-                            />
+                            <div className="flex items-center gap-1">
+                                <Input
+                                    id="durationMins"
+                                    type="number"
+                                    min="0"
+                                    max="5"
+                                    placeholder="0"
+                                    value={durationMins}
+                                    onChange={(e) => setDurationMins(e.target.value)}
+                                    disabled={isLoading}
+                                    className="text-center"
+                                    aria-label="Minutes"
+                                />
+                                <span className="text-sm font-medium text-muted-foreground shrink-0">m</span>
+                                <Input
+                                    id="durationSecs"
+                                    type="number"
+                                    min="0"
+                                    max="59"
+                                    placeholder="0"
+                                    value={durationSecs}
+                                    onChange={(e) => setDurationSecs(e.target.value)}
+                                    disabled={isLoading}
+                                    className="text-center"
+                                    aria-label="Seconds"
+                                />
+                                <span className="text-sm font-medium text-muted-foreground shrink-0">s</span>
+                            </div>
                         </div>
 
                         <div className="space-y-2">
-                            <label htmlFor="genre" className="text-sm font-medium leading-none">
-                                Genre (Optional)
+                            <label htmlFor="genre" className="text-sm font-medium leading-none flex items-center">
+                                Genre
+                                <FieldTooltip text="Suggested musical genre. You can also include genre directly in your prompt for more specific results." />
                             </label>
-                            <Select
+                            <input
                                 id="genre"
+                                list="genre-options"
                                 value={genre}
                                 onChange={(e) => setGenre(e.target.value)}
                                 disabled={isLoading}
-                                className="w-full"
-                            >
-                                <option value="">Any</option>
-                                <option value="electronic">Electronic</option>
-                                <option value="rock">Rock</option>
-                                <option value="jazz">Jazz</option>
-                                <option value="classical">Classical</option>
-                                <option value="lofi">Lo-Fi</option>
-                                <option value="cinematic">Cinematic</option>
-                            </Select>
+                                placeholder="Any"
+                                className="flex h-9 w-full rounded-md border border-input bg-background text-foreground px-3 py-1 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                            />
+                            <datalist id="genre-options">
+                                <option value="Afrobeat" />
+                                <option value="Ambient" />
+                                <option value="Blues" />
+                                <option value="Cinematic" />
+                                <option value="Classical" />
+                                <option value="Country" />
+                                <option value="Disco" />
+                                <option value="Electronic" />
+                                <option value="Folk" />
+                                <option value="Funk" />
+                                <option value="Gospel" />
+                                <option value="Hip-Hop" />
+                                <option value="Jazz" />
+                                <option value="Lo-Fi" />
+                                <option value="Metal" />
+                                <option value="Pop" />
+                                <option value="Punk" />
+                                <option value="R&B / Soul" />
+                                <option value="Reggae" />
+                                <option value="Rock" />
+                                <option value="Synthwave" />
+                            </datalist>
                         </div>
 
                         <div className="space-y-2">
-                            <label htmlFor="simpleVocalLanguage" className="text-sm font-medium leading-none">
+                            <label htmlFor="simpleVocalLanguage" className="text-sm font-medium leading-none flex items-center">
                                 Language
+                                <FieldTooltip text="The vocal language for the generated song. Controls the language of any sung lyrics. Choose the language you want the vocals to be in." />
                             </label>
                             <Select
                                 id="simpleVocalLanguage"
@@ -228,11 +322,18 @@ export function MusicGeneratorForm({ onJobCreated }: MusicGeneratorFormProps) {
                                 disabled={isLoading}
                                 className="w-full"
                             >
+                                <option value="bn">Bengali</option>
+                                <option value="zh">Chinese</option>
                                 <option value="en">English</option>
+                                <option value="fr">French</option>
+                                <option value="de">German</option>
+                                <option value="he">Hebrew</option>
+                                <option value="hu">Hungarian</option>
                                 <option value="ja">Japanese</option>
                                 <option value="ko">Korean</option>
-                                <option value="zh">Chinese</option>
-                                <option value="fr">French</option>
+                                <option value="ms">Malay</option>
+                                <option value="pl">Polish</option>
+                                <option value="pt">Portuguese</option>
                                 <option value="es">Spanish</option>
                             </Select>
                         </div>
@@ -241,13 +342,14 @@ export function MusicGeneratorForm({ onJobCreated }: MusicGeneratorFormProps) {
                     {isAdvanced && (
                         <div className="space-y-4 pt-4 border-t border-border mt-4 animate-in fade-in slide-in-from-top-2">
                             <h3 className="text-sm font-semibold flex items-center gap-2">
-                                <Sparkles className="w-4 h-4 text-purple-500" />
+                                <SlidersHorizontal className="w-4 h-4 text-purple-500" />
                                 Advanced Controls
                             </h3>
 
                             <div className="space-y-2">
-                                <label htmlFor="lyrics" className="text-sm font-medium leading-none">
-                                    Lyrics (Optional)
+                                <label htmlFor="lyrics" className="text-sm font-medium leading-none flex items-center">
+                                    Lyrics
+                                    <FieldTooltip text="Song lyrics with structure tags like [Verse], [Chorus], [Bridge]. Leave blank for AI auto-generation. Use [Instrumental] to explicitly skip vocals." />
                                 </label>
                                 <textarea
                                     id="lyrics"
@@ -261,8 +363,9 @@ export function MusicGeneratorForm({ onJobCreated }: MusicGeneratorFormProps) {
 
                             <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                                 <div className="space-y-2">
-                                    <label htmlFor="bpm" className="text-sm font-medium leading-none">
+                                    <label htmlFor="bpm" className="text-sm font-medium leading-none flex items-center">
                                         BPM / Tempo
+                                        <FieldTooltip text="Beats per minute (30–300). Controls the speed/feel of the music. Leave blank to let the AI choose automatically based on your prompt." />
                                     </label>
                                     <Input
                                         id="bpm"
@@ -277,8 +380,9 @@ export function MusicGeneratorForm({ onJobCreated }: MusicGeneratorFormProps) {
                                 </div>
 
                                 <div className="space-y-2">
-                                    <label htmlFor="keyScale" className="text-sm font-medium leading-none">
+                                    <label htmlFor="keyScale" className="text-sm font-medium leading-none flex items-center">
                                         Key / Scale
+                                        <FieldTooltip text="Musical key, e.g. 'C Major' or 'F# minor'. Constrains the harmonic content. Leave blank for AI auto-detection." />
                                     </label>
                                     <Input
                                         id="keyScale"
@@ -290,8 +394,9 @@ export function MusicGeneratorForm({ onJobCreated }: MusicGeneratorFormProps) {
                                 </div>
 
                                 <div className="space-y-2">
-                                    <label htmlFor="timeSignature" className="text-sm font-medium leading-none">
+                                    <label htmlFor="timeSignature" className="text-sm font-medium leading-none flex items-center">
                                         Time Sig.
+                                        <FieldTooltip text="Time signature, e.g. '4/4' (common), '3/4' (waltz), '6/8' (compound). Affects the rhythmic feel. Leave blank for auto-detection." />
                                     </label>
                                     <Input
                                         id="timeSignature"
@@ -305,8 +410,45 @@ export function MusicGeneratorForm({ onJobCreated }: MusicGeneratorFormProps) {
 
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-2">
-                                    <label htmlFor="inferenceSteps" className="text-sm font-medium leading-none">
+                                    <label htmlFor="audioFormat" className="text-sm font-medium leading-none flex items-center">
+                                        Audio Format
+                                        <FieldTooltip text="Output audio file format. MP3 is smallest and most compatible. WAV is lossless and uncompressed. FLAC is lossless and compressed." />
+                                    </label>
+                                    <Select
+                                        id="audioFormat"
+                                        value={audioFormat}
+                                        onChange={(e) => setAudioFormat(e.target.value as "mp3" | "wav" | "flac")}
+                                        disabled={isLoading}
+                                        className="w-full"
+                                    >
+                                        <option value="mp3">MP3</option>
+                                        <option value="wav">WAV</option>
+                                        <option value="flac">FLAC</option>
+                                    </Select>
+                                </div>
+                                <div className="space-y-2">
+                                    <label htmlFor="inferMethod" className="text-sm font-medium leading-none flex items-center">
+                                        Diffusion Method
+                                        <FieldTooltip text="ODE (Euler) is faster and more deterministic. SDE (stochastic) adds randomness during sampling, which can produce more creative or varied results." />
+                                    </label>
+                                    <Select
+                                        id="inferMethod"
+                                        value={inferMethod}
+                                        onChange={(e) => setInferMethod(e.target.value as "ode" | "sde")}
+                                        disabled={isLoading}
+                                        className="w-full"
+                                    >
+                                        <option value="ode">ODE (Fast)</option>
+                                        <option value="sde">SDE (Creative)</option>
+                                    </Select>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                    <label htmlFor="inferenceSteps" className="text-sm font-medium leading-none flex items-center">
                                         Inference Steps ({inferenceSteps})
+                                        <FieldTooltip text="Number of denoising steps (1–20). Higher = better quality but slower generation. 8 is the recommended sweet spot for the turbo model." />
                                     </label>
                                     <Input
                                         id="inferenceSteps"
@@ -320,8 +462,9 @@ export function MusicGeneratorForm({ onJobCreated }: MusicGeneratorFormProps) {
                                     />
                                 </div>
                                 <div className="space-y-2">
-                                    <label htmlFor="batchSize" className="text-sm font-medium leading-none">
+                                    <label htmlFor="batchSize" className="text-sm font-medium leading-none flex items-center">
                                         Batch Size ({batchSize})
+                                        <FieldTooltip text="Number of music variations to generate in parallel (1–4). More variations take more time and GPU memory, but give you more to choose from." />
                                     </label>
                                     <Input
                                         id="batchSize"
@@ -336,7 +479,7 @@ export function MusicGeneratorForm({ onJobCreated }: MusicGeneratorFormProps) {
                                 </div>
                             </div>
 
-                            <div className="flex gap-4 pt-2">
+                            <div className="flex flex-wrap gap-4 pt-2">
                                 <label className="flex items-center gap-2 text-sm font-medium leading-none">
                                     <input
                                         type="checkbox"
@@ -346,6 +489,7 @@ export function MusicGeneratorForm({ onJobCreated }: MusicGeneratorFormProps) {
                                         className="rounded border-gray-300"
                                     />
                                     Use LM Thinking
+                                    <FieldTooltip text="Enables AI chain-of-thought reasoning to automatically detect and refine metadata like BPM, key, and duration. Recommended for best results." />
                                 </label>
                                 <label className="flex items-center gap-2 text-sm font-medium leading-none">
                                     <input
@@ -356,10 +500,13 @@ export function MusicGeneratorForm({ onJobCreated }: MusicGeneratorFormProps) {
                                         className="rounded border-gray-300"
                                     />
                                     LM Format Prompt/Lyrics
+                                    <FieldTooltip text="Uses the AI to enhance and structure your prompt and lyrics before generation. Useful when your input is short or informal." />
                                 </label>
                             </div>
                         </div>
                     )}
+
+                    <p className="text-xs text-muted-foreground"><span className="text-destructive">*</span> Required</p>
 
                     {error && (
                         <div className="text-sm text-destructive bg-destructive/10 p-3 rounded-md">
@@ -368,7 +515,7 @@ export function MusicGeneratorForm({ onJobCreated }: MusicGeneratorFormProps) {
                     )}
 
                     <Button type="submit" className="w-full" disabled={isLoading} isLoading={isLoading}>
-                        {isLoading ? "Starting Generation..." : "Generate Music"}
+                        {isLoading ? LOADING_MESSAGES[loadingMessageIndex] : "Generate Music"}
                     </Button>
                 </form>
             </CardContent>

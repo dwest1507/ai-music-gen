@@ -64,7 +64,7 @@ describe('JobStatus', () => {
         render(<JobStatus jobId="test-job-123" />);
 
         await waitFor(() => {
-            expect(screen.getByText('Waiting in Queue...')).toBeInTheDocument();
+            expect(screen.getByText('Generating Music...')).toBeInTheDocument();
         });
 
         expect(mockApiFetch).toHaveBeenCalledTimes(1);
@@ -111,6 +111,47 @@ describe('JobStatus', () => {
         await waitFor(() => {
             expect(screen.getByText('Generation Failed')).toBeInTheDocument();
             expect(screen.getByText('Out of memory')).toBeInTheDocument();
+        });
+    });
+
+    it('shows fallback error message when failed status has no error field', async () => {
+        mockApiFetch.mockResolvedValue({
+            task_id: 'test-job-123',
+            status: 'failed',
+        });
+
+        render(<JobStatus jobId="test-job-123" />);
+
+        await waitFor(() => {
+            expect(screen.getByText('An unknown error occurred.')).toBeInTheDocument();
+        });
+    });
+
+    it('renders a single audio player when only audio_url is provided', async () => {
+        mockApiFetch.mockResolvedValue({
+            task_id: 'test-job-123',
+            status: 'completed',
+            audio_url: '/api/audio/single.mp3',
+        });
+
+        render(<JobStatus jobId="test-job-123" />);
+
+        await waitFor(() => {
+            expect(screen.getByText('Generation Complete!')).toBeInTheDocument();
+            const players = screen.getAllByTestId('audio-player');
+            expect(players).toHaveLength(1);
+            expect(players[0]).toHaveTextContent('/api/audio/single.mp3');
+        });
+    });
+
+    it('shows error state when polling returns a 404 error', async () => {
+        const err = Object.assign(new Error('Not Found'), { status: 404 });
+        mockApiFetch.mockRejectedValue(err);
+
+        render(<JobStatus jobId="test-job-123" />);
+
+        await waitFor(() => {
+            expect(screen.getByText('Job not found')).toBeInTheDocument();
         });
     });
 });
