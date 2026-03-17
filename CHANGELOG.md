@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0](https://github.com/dwest1507/ai-music-gen/compare/ai-music-gen-v0.3.0...ai-music-gen-v0.4.0) (2026-03-17)
+
+
+### Features
+
+* funny waiting messages + tool tips + updated genre list + diffusion method + audio format + minute inputs for duration ([939c82b](https://github.com/dwest1507/ai-music-gen/commit/939c82b30b5ccaffa0e69774adbab91c7c0d80bd))
+
 ## [0.3.0](https://github.com/dwest1507/ai-music-gen/compare/ai-music-gen-v0.2.1...ai-music-gen-v0.3.0) (2026-03-16)
 
 
