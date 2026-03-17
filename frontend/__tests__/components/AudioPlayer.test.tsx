@@ -63,6 +63,41 @@ describe('AudioPlayer', () => {
         expect(mockLink.click).toHaveBeenCalled();
     });
 
+    it('calls playPause when play button is clicked', () => {
+        render(<AudioPlayer audioUrl="/api/audio/task-abc" />);
+
+        const playButton = screen.getAllByRole('button')[0];
+        fireEvent.click(playButton);
+
+        expect(mockWavesurferObj.playPause).toHaveBeenCalled();
+    });
+
+    it('calls setMuted when mute button is clicked', () => {
+        render(<AudioPlayer audioUrl="/api/audio/task-abc" />);
+
+        const muteButton = screen.getAllByRole('button')[1];
+        fireEvent.click(muteButton);
+
+        expect(mockWavesurferObj.setMuted).toHaveBeenCalledWith(true);
+    });
+
+    it('extracts filename from ?path= query parameter', () => {
+        render(<AudioPlayer audioUrl="https://api.example.com/v1/audio?path=output%2Ftrack.flac" />);
+
+        const mockLink = {
+            click: vi.fn(),
+            href: '',
+            download: '',
+        } as unknown as HTMLAnchorElement;
+        vi.spyOn(document, 'createElement').mockReturnValue(mockLink);
+        vi.spyOn(document.body, 'appendChild').mockImplementation((node) => node);
+        vi.spyOn(document.body, 'removeChild').mockImplementation((node) => node);
+
+        fireEvent.click(screen.getByRole('button', { name: /Download/i }));
+
+        expect(mockLink.download).toBe('track.flac');
+    });
+
     it('handles download fallback to .wav', () => {
         render(<AudioPlayer audioUrl="/api/audio/123-456.wav" />);
 
