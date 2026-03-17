@@ -6,3 +6,6 @@
 
 # VS Code Workspace
 *.code-workspace
+
+# Claude Code
+.claude

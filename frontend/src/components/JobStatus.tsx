@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 
 const GENERATING_MESSAGES = [
     "Generating Music...",
-    "The backend is up! Now the AI is doing its thing...",
+    "Now the AI is doing its thing...",
     "Longer prompts take more time to process...",
     "The model is crafting your audio, note by note...",
     "Still generating... this is the hard part...",
