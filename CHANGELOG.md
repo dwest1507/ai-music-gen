@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0](https://github.com/dwest1507/ai-music-gen/compare/ai-music-gen-v0.4.0...ai-music-gen-v0.5.0) (2026-03-17)
+
+
+### Features
+
+* add about page with tech stack and CI/CD overview ([c0ad35a](https://github.com/dwest1507/ai-music-gen/commit/c0ad35a39e3ed206b6d6e9b1e547b8b4be03124c))
+
 ## [0.4.0](https://github.com/dwest1507/ai-music-gen/compare/ai-music-gen-v0.3.0...ai-music-gen-v0.4.0) (2026-03-17)
 
 
