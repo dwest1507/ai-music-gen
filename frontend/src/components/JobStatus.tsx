@@ -121,7 +121,6 @@ export function JobStatus({ jobId }: JobStatusProps) {
                 clearInterval(generatingIntervalRef.current);
                 generatingIntervalRef.current = null;
             }
-            setGeneratingMessageIndex(0);
         };
     }, [job?.status]);
 

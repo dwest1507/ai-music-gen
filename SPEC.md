@@ -310,13 +310,16 @@ The backend uses the `path` query parameter (from the task result's `file` field
 ```
 frontend/src/
 ├── app/
-│   ├── page.tsx                   # Main page
-│   ├── layout.tsx                 # Root layout
+│   ├── page.tsx                   # Home page (music generator)
+│   ├── about/
+│   │   └── page.tsx               # About page (project overview, tech stack, CI/CD)
+│   ├── layout.tsx                 # Root layout (NavBar, metadata)
 │   └── globals.css                # Global styles
 ├── components/
 │   ├── MusicGeneratorForm.tsx     # Generation form
 │   ├── AudioPlayer.tsx            # Audio player
 │   ├── JobStatus.tsx              # Status display
+│   ├── NavBar.tsx                 # Top navigation bar (Generator / About)
 │   └── ui/                       # Shared UI primitives
 ├── lib/
 │   ├── api.ts                     # API client
@@ -342,6 +345,15 @@ frontend/src/
 **`AudioPlayer.tsx`** — Maps audio output:
 - Supports MP3/WAV depending on requested config.
 - Handles multi-track downloads when `batch_size > 1`.
+
+**`NavBar.tsx`** — Client component providing persistent top navigation:
+- Brand link (home) and links to Generator (`/`) and About (`/about`).
+- Active link is highlighted using `usePathname`.
+
+**`about/page.tsx`** — Static server component presenting the project as a portfolio piece:
+- System architecture diagram (Browser → Next.js → FastAPI → Modal GPU).
+- Tech stack cards for each layer: AI Inference, Backend API, Frontend, CI/CD & DevOps.
+- Links to the GitHub repositories.
 
 ### 5.4 CI/CD Architecture
 
