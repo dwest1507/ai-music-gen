@@ -102,6 +102,7 @@ Supports optional API key via:
 | `time_signature` | string | `""` | Time signature |
 | `inference_steps` | int | `8` | Inference steps (turbo: 1–20) |
 | `batch_size` | int | `1` | Number of variations to generate |
+| `infer_method` | string | `"ode"` | Diffusion inference method: `"ode"` (Euler, faster) or `"sde"` (stochastic, more creative) |
 
 ---
 
@@ -141,6 +142,7 @@ Supports optional API key via:
 | NFR-8 | Cold start time acceptable with auto-sleep capabilities | Should |
 | NFR-9 | Graceful degradation when ACE-Step API is unavailable | Should |
 | NFR-10 | HTTPS enforced on all production endpoints | Must |
+| NFR-11 | 100% test coverage required; all new features must include corresponding tests | Must |
 
 ### 4.3 Security Requirements
 
@@ -242,7 +244,7 @@ Request body (Pydantic model):
 {
   "prompt": "string (required, max 500 chars)",
   "lyrics": "string (optional, max 5000 chars)",
-  "duration": "float (optional, 10-600, default 60)",
+  "duration": "float (optional, 10-300, default 60)",
   "genre": "string (optional)",
   "vocal_language": "string (optional, default 'en')",
   "audio_format": "string (optional, 'mp3'|'wav'|'flac', default 'mp3')",
@@ -252,7 +254,8 @@ Request body (Pydantic model):
   "key_scale": "string (optional)",
   "time_signature": "string (optional)",
   "inference_steps": "int (optional, 1-20, default 8)",
-  "batch_size": "int (optional, 1-4, default 1)"
+  "batch_size": "int (optional, 1-4, default 1)",
+  "infer_method": "string (optional, 'ode'|'sde', default 'ode')"
 }
 ```
 

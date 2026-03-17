@@ -99,3 +99,11 @@ Release Please manages unified versioning across `package.json`, `frontend/packa
 - `backend/tests/local/` — unit + integration tests, run in CI
 - `backend/tests/deployment/` — smoke/security tests for deployed environments (not run in CI by default)
 - `frontend/__tests__/` — Vitest tests
+
+## Testing Policy
+
+**This repository requires 100% test coverage.** Every new feature, endpoint, or component must include corresponding tests before it can be merged.
+
+- Backend: all new routes, service methods, and business logic must have pytest coverage
+- Frontend: all new components and API client functions must have Vitest coverage
+- Never merge a change that reduces coverage below 100%
