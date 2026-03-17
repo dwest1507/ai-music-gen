@@ -23,7 +23,7 @@ EXAMPLES_ROOT = Path(__file__).parent.parent.parent.parent / "examples"
 class GenerationRequest(BaseModel):
     prompt: str = Field(..., min_length=1, max_length=1000)
     lyrics: str = Field("", max_length=5000)
-    duration: float = Field(60, ge=10, le=600)
+    duration: float = Field(60, ge=10, le=300)
     genre: Optional[str] = None
     vocal_language: str = Field("en")
     audio_format: str = Field("mp3")
@@ -34,6 +34,7 @@ class GenerationRequest(BaseModel):
     time_signature: Optional[str] = None
     inference_steps: int = Field(8, ge=1, le=20)
     batch_size: int = Field(1, ge=1, le=4)
+    infer_method: str = Field("ode")
 
     @field_validator("prompt")
     @classmethod
@@ -48,6 +49,14 @@ class GenerationRequest(BaseModel):
         allowed = {"mp3", "wav", "flac"}
         if v.lower() not in allowed:
             raise ValueError(f"audio_format must be one of {allowed}")
+        return v.lower()
+
+    @field_validator("infer_method")
+    @classmethod
+    def validate_infer_method(cls, v: str) -> str:
+        allowed = {"ode", "sde"}
+        if v.lower() not in allowed:
+            raise ValueError(f"infer_method must be one of {allowed}")
         return v.lower()
 
 
@@ -129,6 +138,8 @@ def _build_release_task_payload(gen_request: GenerationRequest) -> dict:
         payload["key_scale"] = gen_request.key_scale
     if gen_request.time_signature:
         payload["time_signature"] = gen_request.time_signature
+
+    payload["infer_method"] = gen_request.infer_method
 
     return payload
 

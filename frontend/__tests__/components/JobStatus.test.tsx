@@ -64,7 +64,7 @@ describe('JobStatus', () => {
         render(<JobStatus jobId="test-job-123" />);
 
         await waitFor(() => {
-            expect(screen.getByText('Waiting in Queue...')).toBeInTheDocument();
+            expect(screen.getByText('Generating Music...')).toBeInTheDocument();
         });
 
         expect(mockApiFetch).toHaveBeenCalledTimes(1);

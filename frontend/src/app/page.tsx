@@ -21,7 +21,7 @@ export default function Home() {
         </div>
         <h1 className="text-4xl font-bold tracking-tight">AI Music Generator</h1>
         <p className="text-muted-foreground text-lg max-w-xl">
-          Create unique royalty-free music in seconds. Just describe the vibe, and our AI does the rest.
+          Create unique royalty-free music in seconds. Just describe the vibe, and the AI does the rest.
         </p>
       </header>
 

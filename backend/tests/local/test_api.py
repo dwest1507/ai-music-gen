@@ -39,6 +39,7 @@ async def test_submit_generation(async_client, mock_acestep_client):
     assert "Cinematic" in call_args["prompt"]
     assert call_args["audio_duration"] == 60
     assert call_args["thinking"] is True
+    assert call_args["infer_method"] == "ode"
     assert "session_id" in response.cookies
 
 
@@ -75,6 +76,47 @@ async def test_submit_generation_instrumental_default(
 
     call_args = mock_acestep_client.submit_task.call_args[0][0]
     assert call_args["lyrics"] == "[Instrumental]"
+
+
+@pytest.mark.asyncio
+async def test_submit_generation_with_infer_method_sde(
+    async_client, mock_acestep_client
+):
+    mock_acestep_client.submit_task.return_value = {"task_id": "sde-task"}
+
+    async_client.cookies.set("session_id", "test-sde-session")
+    payload = {"prompt": "A folk song", "infer_method": "sde"}
+    response = await async_client.post("/api/generate", json=payload)
+    assert response.status_code == 202
+
+    call_args = mock_acestep_client.submit_task.call_args[0][0]
+    assert call_args["infer_method"] == "sde"
+
+
+@pytest.mark.asyncio
+async def test_submit_generation_validation_invalid_infer_method(async_client):
+    payload = {"prompt": "test", "infer_method": "euler"}
+    response = await async_client.post("/api/generate", json=payload)
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_submit_generation_duration_max(async_client, mock_acestep_client):
+    """Duration max is 300 seconds (5 minutes)."""
+    mock_acestep_client.submit_task.return_value = {"task_id": "dur-task"}
+
+    # Exactly at max should pass
+    async_client.cookies.set("session_id", "test-dur-max-session")
+    response = await async_client.post(
+        "/api/generate", json={"prompt": "test", "duration": 300}
+    )
+    assert response.status_code == 202
+
+    # One second over should fail (validation rejects before rate limiter)
+    response = await async_client.post(
+        "/api/generate", json={"prompt": "test", "duration": 301}
+    )
+    assert response.status_code == 422
 
 
 @pytest.mark.asyncio

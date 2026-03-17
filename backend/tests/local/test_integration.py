@@ -19,6 +19,7 @@ async def test_integration_workflow(async_client, mock_acestep_client):
     }
 
     # 1. Submit generation job
+    async_client.cookies.set("session_id", "integration-test-session")
     submit_response = await async_client.post(
         "/api/generate",
         json={"prompt": "Test integration prompt", "duration": 10, "genre": "test"},

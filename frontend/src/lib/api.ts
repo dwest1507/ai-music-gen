@@ -67,6 +67,7 @@ export interface GenerateRequest {
     time_signature?: string;
     inference_steps?: number;
     batch_size?: number;
+    infer_method?: string;
 }
 
 export interface GenerateResponse {
