@@ -6,7 +6,7 @@ import { apiFetch, GenerateRequest, GenerateResponse, getRandomExample } from "@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { HelpCircle, Music, Settings2, SlidersHorizontal, Sparkles } from "lucide-react";
 import { z } from "zod";
 
@@ -51,11 +51,24 @@ const generateSchema = z.object({
 function FieldTooltip({ text }: { text: string }) {
     return (
         <span className="relative group inline-flex items-center ml-1.5 align-middle">
-            <HelpCircle className="w-3.5 h-3.5 text-muted-foreground cursor-help" />
-            <span className="pointer-events-none absolute left-1/2 -translate-x-1/2 bottom-full mb-2 hidden group-hover:block z-50 w-60 rounded-md bg-popover text-popover-foreground text-xs shadow-md border border-border px-2.5 py-2 leading-relaxed">
+            <HelpCircle className="w-3 h-3 text-muted-foreground cursor-help" strokeWidth={1.5} />
+            <span className="pointer-events-none absolute left-1/2 -translate-x-1/2 bottom-full mb-2 hidden group-hover:block z-50 w-60 bg-[#12121a] text-[#e0e0e0] text-xs px-3 py-2 leading-relaxed"
+                style={{ border: "1px solid #2a2a3a", boxShadow: "0 0 10px rgba(0,0,0,0.8)" }}
+            >
                 {text}
             </span>
         </span>
+    );
+}
+
+function Label({ children, htmlFor }: { children: React.ReactNode; htmlFor?: string }) {
+    return (
+        <label
+            htmlFor={htmlFor}
+            className="text-[10px] font-medium uppercase tracking-[0.12em] text-muted-foreground flex items-center"
+        >
+            {children}
+        </label>
     );
 }
 
@@ -129,10 +142,9 @@ export function MusicGeneratorForm({ onJobCreated }: MusicGeneratorFormProps) {
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
 
-        if (isLoading) return; // Prevent concurrent submissions
+        if (isLoading) return;
 
         const now = Date.now();
-        // 5 second cooldown to prevent rate limit hammering or duplicate accidental spawns
         if (now - lastSubmitTime < 5000) {
             setError("Please wait a few seconds before generating another track.");
             return;
@@ -143,7 +155,6 @@ export function MusicGeneratorForm({ onJobCreated }: MusicGeneratorFormProps) {
         setLastSubmitTime(now);
 
         try {
-            // Validate
             const payloadInput = {
                 prompt,
                 duration: (parseInt(durationMins || "0") * 60) + parseInt(durationSecs || "0"),
@@ -168,7 +179,7 @@ export function MusicGeneratorForm({ onJobCreated }: MusicGeneratorFormProps) {
                 body: JSON.stringify(payload),
             });
 
-            onJobCreated(data.task_id || data.job_id || ""); // Support legacy name if needed
+            onJobCreated(data.task_id || data.job_id || "");
         } catch (err: unknown) {
             if (err instanceof z.ZodError) {
                 setError(err.issues[0].message);
@@ -183,17 +194,20 @@ export function MusicGeneratorForm({ onJobCreated }: MusicGeneratorFormProps) {
     };
 
     return (
-        <Card className="w-full max-w-2xl mx-auto shadow-lg border-primary/20">
-            <CardHeader className="flex flex-row items-start justify-between">
-                <div>
-                    <CardTitle className="flex items-center gap-2">
-                        <Music className="w-6 h-6 text-primary" />
-                        Create Music
-                    </CardTitle>
-                    <CardDescription>
-                        Describe the music you want to generate using AI.
-                    </CardDescription>
+        <Card className="w-full max-w-2xl mx-auto">
+            {/* Terminal header bar */}
+            <div
+                className="flex items-center justify-between px-4 py-2 border-b"
+                style={{ borderColor: "#2a2a3a", background: "#0a0a0f" }}
+            >
+                <div className="flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded-full bg-[#ff3366]" style={{ boxShadow: "0 0 4px #ff3366" }} />
+                    <span className="w-2.5 h-2.5 rounded-full bg-[#ffd700]" style={{ boxShadow: "0 0 4px #ffd700" }} />
+                    <span className="w-2.5 h-2.5 rounded-full bg-[#00ff88]" style={{ boxShadow: "0 0 4px #00ff88" }} />
                 </div>
+                <span className="text-[10px] uppercase tracking-[0.15em] text-muted-foreground">
+                    music-gen.exe
+                </span>
                 <div className="flex gap-2">
                     <Button
                         type="button"
@@ -201,9 +215,10 @@ export function MusicGeneratorForm({ onJobCreated }: MusicGeneratorFormProps) {
                         size="sm"
                         onClick={handleTryExample}
                         disabled={isLoading}
-                        className="flex items-center gap-2 text-purple-600 border-purple-200 hover:bg-purple-50 hover:text-purple-700"
+                        className="flex items-center gap-1.5"
+                        style={{ borderColor: "#ff00ff40", color: "#ff00ff" }}
                     >
-                        <Sparkles className="w-4 h-4" />
+                        <Sparkles className="w-3 h-3" strokeWidth={1.5} />
                         Try an Example
                     </Button>
                     <Button
@@ -211,36 +226,44 @@ export function MusicGeneratorForm({ onJobCreated }: MusicGeneratorFormProps) {
                         variant="ghost"
                         size="sm"
                         onClick={() => setIsAdvanced(!isAdvanced)}
-                        className="flex items-center gap-2"
+                        className="flex items-center gap-1.5"
                     >
-                        <Settings2 className="w-4 h-4" />
+                        <Settings2 className="w-3 h-3" strokeWidth={1.5} />
                         {isAdvanced ? "Simple Mode" : "Advanced"}
                     </Button>
                 </div>
+            </div>
+
+            <CardHeader className="pb-2 pt-5">
+                <CardTitle className="flex items-center gap-2 text-sm" style={{ color: "#00ff88" }}>
+                    <Music className="w-4 h-4" strokeWidth={1.5} style={{ filter: "drop-shadow(0 0 4px #00ff88)" }} />
+                    Create Music
+                </CardTitle>
             </CardHeader>
+
             <CardContent>
-                <form onSubmit={handleSubmit} className="space-y-4">
+                <form onSubmit={handleSubmit} className="space-y-5">
                     <div className="space-y-2">
-                        <label htmlFor="prompt" className="text-sm font-medium leading-none flex items-center">
+                        <Label htmlFor="prompt">
                             Prompt <span className="text-destructive ml-0.5">*</span>
                             <FieldTooltip text="Describe the music you want. Include genre, mood, instruments, and energy level for best results. E.g. 'upbeat electronic dance music with heavy bass and synth leads.'" />
-                        </label>
+                        </Label>
                         <textarea
                             id="prompt"
                             placeholder="E.g., A lo-fi hip hop beat for studying..."
                             value={prompt}
                             onChange={(e) => setPrompt(e.target.value)}
                             disabled={isLoading}
-                            className="flex min-h-[60px] w-full resize-y rounded-md border border-input bg-background text-foreground px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                            className="cyber-input flex min-h-[70px] w-full resize-y px-3 py-2 text-sm"
                         />
                     </div>
 
                     <div className="grid grid-cols-3 gap-4">
                         <div className="space-y-2">
-                            <label className="text-sm font-medium leading-none flex items-center">
+                            <Label>
                                 Duration <span className="text-destructive ml-0.5">*</span>
                                 <FieldTooltip text="Target audio length (10s–5m). 1 minute is a good default. For vocal tracks, match the length to your lyrics." />
-                            </label>
+                            </Label>
                             <div className="flex items-center gap-1">
                                 <Input
                                     id="durationMins"
@@ -254,7 +277,7 @@ export function MusicGeneratorForm({ onJobCreated }: MusicGeneratorFormProps) {
                                     className="text-center"
                                     aria-label="Minutes"
                                 />
-                                <span className="text-sm font-medium text-muted-foreground shrink-0">m</span>
+                                <span className="text-[10px] font-medium text-muted-foreground shrink-0 uppercase tracking-wider">m</span>
                                 <Input
                                     id="durationSecs"
                                     type="number"
@@ -267,15 +290,15 @@ export function MusicGeneratorForm({ onJobCreated }: MusicGeneratorFormProps) {
                                     className="text-center"
                                     aria-label="Seconds"
                                 />
-                                <span className="text-sm font-medium text-muted-foreground shrink-0">s</span>
+                                <span className="text-[10px] font-medium text-muted-foreground shrink-0 uppercase tracking-wider">s</span>
                             </div>
                         </div>
 
                         <div className="space-y-2">
-                            <label htmlFor="genre" className="text-sm font-medium leading-none flex items-center">
+                            <Label htmlFor="genre">
                                 Genre
                                 <FieldTooltip text="Suggested musical genre. You can also include genre directly in your prompt for more specific results." />
-                            </label>
+                            </Label>
                             <input
                                 id="genre"
                                 list="genre-options"
@@ -283,7 +306,7 @@ export function MusicGeneratorForm({ onJobCreated }: MusicGeneratorFormProps) {
                                 onChange={(e) => setGenre(e.target.value)}
                                 disabled={isLoading}
                                 placeholder="Any"
-                                className="flex h-9 w-full rounded-md border border-input bg-background text-foreground px-3 py-1 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                                className="cyber-input flex h-10 w-full px-3 py-2 text-sm"
                             />
                             <datalist id="genre-options">
                                 <option value="Afrobeat" />
@@ -311,10 +334,10 @@ export function MusicGeneratorForm({ onJobCreated }: MusicGeneratorFormProps) {
                         </div>
 
                         <div className="space-y-2">
-                            <label htmlFor="simpleVocalLanguage" className="text-sm font-medium leading-none flex items-center">
+                            <Label htmlFor="simpleVocalLanguage">
                                 Language
                                 <FieldTooltip text="The vocal language for the generated song. Controls the language of any sung lyrics. Choose the language you want the vocals to be in." />
-                            </label>
+                            </Label>
                             <Select
                                 id="simpleVocalLanguage"
                                 value={vocalLanguage}
@@ -340,33 +363,37 @@ export function MusicGeneratorForm({ onJobCreated }: MusicGeneratorFormProps) {
                     </div>
 
                     {isAdvanced && (
-                        <div className="space-y-4 pt-4 border-t border-border mt-4 animate-in fade-in slide-in-from-top-2">
-                            <h3 className="text-sm font-semibold flex items-center gap-2">
-                                <SlidersHorizontal className="w-4 h-4 text-purple-500" />
+                        <div className="space-y-4 pt-4 border-t mt-4 animate-in fade-in slide-in-from-top-2"
+                            style={{ borderColor: "#2a2a3a" }}
+                        >
+                            <h3 className="text-[10px] font-semibold uppercase tracking-[0.15em] flex items-center gap-2"
+                                style={{ color: "#00d4ff" }}
+                            >
+                                <SlidersHorizontal className="w-3.5 h-3.5" strokeWidth={1.5} />
                                 Advanced Controls
                             </h3>
 
                             <div className="space-y-2">
-                                <label htmlFor="lyrics" className="text-sm font-medium leading-none flex items-center">
+                                <Label htmlFor="lyrics">
                                     Lyrics
                                     <FieldTooltip text="Song lyrics with structure tags like [Verse], [Chorus], [Bridge]. Leave blank for AI auto-generation. Use [Instrumental] to explicitly skip vocals." />
-                                </label>
+                                </Label>
                                 <textarea
                                     id="lyrics"
                                     placeholder="Enter your lyrics here..."
                                     value={lyrics}
                                     onChange={(e) => setLyrics(e.target.value)}
                                     disabled={isLoading}
-                                    className="flex min-h-[80px] w-full rounded-md border border-input bg-background text-foreground px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                                    className="cyber-input flex min-h-[80px] w-full resize-y px-3 py-2 text-sm"
                                 />
                             </div>
 
                             <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                                 <div className="space-y-2">
-                                    <label htmlFor="bpm" className="text-sm font-medium leading-none flex items-center">
+                                    <Label htmlFor="bpm">
                                         BPM / Tempo
                                         <FieldTooltip text="Beats per minute (30–300). Controls the speed/feel of the music. Leave blank to let the AI choose automatically based on your prompt." />
-                                    </label>
+                                    </Label>
                                     <Input
                                         id="bpm"
                                         type="number"
@@ -380,10 +407,10 @@ export function MusicGeneratorForm({ onJobCreated }: MusicGeneratorFormProps) {
                                 </div>
 
                                 <div className="space-y-2">
-                                    <label htmlFor="keyScale" className="text-sm font-medium leading-none flex items-center">
+                                    <Label htmlFor="keyScale">
                                         Key / Scale
                                         <FieldTooltip text="Musical key, e.g. 'C Major' or 'F# minor'. Constrains the harmonic content. Leave blank for AI auto-detection." />
-                                    </label>
+                                    </Label>
                                     <Input
                                         id="keyScale"
                                         placeholder="e.g. C Major"
@@ -394,10 +421,10 @@ export function MusicGeneratorForm({ onJobCreated }: MusicGeneratorFormProps) {
                                 </div>
 
                                 <div className="space-y-2">
-                                    <label htmlFor="timeSignature" className="text-sm font-medium leading-none flex items-center">
+                                    <Label htmlFor="timeSignature">
                                         Time Sig.
                                         <FieldTooltip text="Time signature, e.g. '4/4' (common), '3/4' (waltz), '6/8' (compound). Affects the rhythmic feel. Leave blank for auto-detection." />
-                                    </label>
+                                    </Label>
                                     <Input
                                         id="timeSignature"
                                         placeholder="e.g. 4/4"
@@ -410,10 +437,10 @@ export function MusicGeneratorForm({ onJobCreated }: MusicGeneratorFormProps) {
 
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-2">
-                                    <label htmlFor="audioFormat" className="text-sm font-medium leading-none flex items-center">
+                                    <Label htmlFor="audioFormat">
                                         Audio Format
                                         <FieldTooltip text="Output audio file format. MP3 is smallest and most compatible. WAV is lossless and uncompressed. FLAC is lossless and compressed." />
-                                    </label>
+                                    </Label>
                                     <Select
                                         id="audioFormat"
                                         value={audioFormat}
@@ -427,10 +454,10 @@ export function MusicGeneratorForm({ onJobCreated }: MusicGeneratorFormProps) {
                                     </Select>
                                 </div>
                                 <div className="space-y-2">
-                                    <label htmlFor="inferMethod" className="text-sm font-medium leading-none flex items-center">
+                                    <Label htmlFor="inferMethod">
                                         Diffusion Method
                                         <FieldTooltip text="ODE (Euler) is faster and more deterministic. SDE (stochastic) adds randomness during sampling, which can produce more creative or varied results." />
-                                    </label>
+                                    </Label>
                                     <Select
                                         id="inferMethod"
                                         value={inferMethod}
@@ -446,10 +473,10 @@ export function MusicGeneratorForm({ onJobCreated }: MusicGeneratorFormProps) {
 
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-2">
-                                    <label htmlFor="inferenceSteps" className="text-sm font-medium leading-none flex items-center">
+                                    <Label htmlFor="inferenceSteps">
                                         Inference Steps ({inferenceSteps})
                                         <FieldTooltip text="Number of denoising steps (1–20). Higher = better quality but slower generation. 8 is the recommended sweet spot for the turbo model." />
-                                    </label>
+                                    </Label>
                                     <Input
                                         id="inferenceSteps"
                                         type="range"
@@ -458,14 +485,14 @@ export function MusicGeneratorForm({ onJobCreated }: MusicGeneratorFormProps) {
                                         value={inferenceSteps}
                                         onChange={(e) => setInferenceSteps(e.target.value)}
                                         disabled={isLoading}
-                                        className="p-0 border-none shadow-none"
+                                        className="p-0 border-none shadow-none h-8"
                                     />
                                 </div>
                                 <div className="space-y-2">
-                                    <label htmlFor="batchSize" className="text-sm font-medium leading-none flex items-center">
+                                    <Label htmlFor="batchSize">
                                         Batch Size ({batchSize})
                                         <FieldTooltip text="Number of music variations to generate in parallel (1–4). More variations take more time and GPU memory, but give you more to choose from." />
-                                    </label>
+                                    </Label>
                                     <Input
                                         id="batchSize"
                                         type="range"
@@ -474,30 +501,30 @@ export function MusicGeneratorForm({ onJobCreated }: MusicGeneratorFormProps) {
                                         value={batchSize}
                                         onChange={(e) => setBatchSize(e.target.value)}
                                         disabled={isLoading}
-                                        className="p-0 border-none shadow-none"
+                                        className="p-0 border-none shadow-none h-8"
                                     />
                                 </div>
                             </div>
 
-                            <div className="flex flex-wrap gap-4 pt-2">
-                                <label className="flex items-center gap-2 text-sm font-medium leading-none">
+                            <div className="flex flex-wrap gap-5 pt-2">
+                                <label className="flex items-center gap-2 text-[10px] font-medium uppercase tracking-[0.12em] text-muted-foreground cursor-pointer">
                                     <input
                                         type="checkbox"
                                         checked={thinking}
                                         onChange={(e) => setThinking(e.target.checked)}
                                         disabled={isLoading}
-                                        className="rounded border-gray-300"
+                                        className="w-3.5 h-3.5 accent-[#00ff88]"
                                     />
                                     Use LM Thinking
                                     <FieldTooltip text="Enables AI chain-of-thought reasoning to automatically detect and refine metadata like BPM, key, and duration. Recommended for best results." />
                                 </label>
-                                <label className="flex items-center gap-2 text-sm font-medium leading-none">
+                                <label className="flex items-center gap-2 text-[10px] font-medium uppercase tracking-[0.12em] text-muted-foreground cursor-pointer">
                                     <input
                                         type="checkbox"
                                         checked={useFormat}
                                         onChange={(e) => setUseFormat(e.target.checked)}
                                         disabled={isLoading}
-                                        className="rounded border-gray-300"
+                                        className="w-3.5 h-3.5 accent-[#00ff88]"
                                     />
                                     LM Format Prompt/Lyrics
                                     <FieldTooltip text="Uses the AI to enhance and structure your prompt and lyrics before generation. Useful when your input is short or informal." />
@@ -506,15 +533,30 @@ export function MusicGeneratorForm({ onJobCreated }: MusicGeneratorFormProps) {
                         </div>
                     )}
 
-                    <p className="text-xs text-muted-foreground"><span className="text-destructive">*</span> Required</p>
+                    <p className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
+                        <span className="text-destructive">*</span> Required
+                    </p>
 
                     {error && (
-                        <div className="text-sm text-destructive bg-destructive/10 p-3 rounded-md">
+                        <div
+                            className="text-xs uppercase tracking-[0.08em] p-3 flex items-start gap-2"
+                            style={{
+                                color: "#ff3366",
+                                background: "rgba(255,51,102,0.08)",
+                                border: "1px solid rgba(255,51,102,0.3)",
+                            }}
+                        >
+                            <span className="shrink-0">›</span>
                             {error}
                         </div>
                     )}
 
-                    <Button type="submit" className="w-full" disabled={isLoading} isLoading={isLoading}>
+                    <Button
+                        type="submit"
+                        className="w-full"
+                        disabled={isLoading}
+                        isLoading={isLoading}
+                    >
                         {isLoading ? LOADING_MESSAGES[loadingMessageIndex] : "Generate Music"}
                     </Button>
                 </form>
