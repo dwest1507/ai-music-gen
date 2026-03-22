@@ -80,6 +80,7 @@ describe('MusicGeneratorForm', () => {
         expect(screen.getByRole('textbox', { name: /Lyrics/i })).toBeInTheDocument();
         expect(screen.getByRole('spinbutton', { name: /BPM/i })).toBeInTheDocument();
         expect(screen.getByLabelText(/Time Sig/i)).toBeInTheDocument();
+        expect(screen.getByRole('checkbox', { name: /Instrumental only/i })).toBeInTheDocument();
 
         // The toggle button should say Simple Mode
         expect(screen.getByRole('button', { name: /Simple Mode/i })).toBeInTheDocument();
@@ -180,6 +181,72 @@ describe('MusicGeneratorForm', () => {
         await waitFor(() => {
             expect(mockOnJobCreated).toHaveBeenCalledWith('test-job-123');
         });
+    });
+
+    it('does not send lyrics when user input has 5 or fewer non-whitespace chars', async () => {
+        mockApiFetch.mockResolvedValue({ task_id: 'auto-lyrics-task', status: 'queued' });
+
+        render(<MusicGeneratorForm onJobCreated={mockOnJobCreated} />);
+        fireEvent.click(screen.getByRole('button', { name: /Advanced/i }));
+
+        fireEvent.change(screen.getByRole('textbox', { name: /Prompt/i }), { target: { value: 'A lo-fi track' } });
+        // 5 non-whitespace chars exactly — should NOT be sent
+        fireEvent.change(screen.getByRole('textbox', { name: /Lyrics/i }), { target: { value: 'hello' } });
+
+        fireEvent.click(screen.getByRole('button', { name: /Generate Music/i }));
+
+        await waitFor(() => {
+            const body = JSON.parse((mockApiFetch.mock.calls[0][1] as { body: string }).body);
+            expect(body.lyrics).toBeUndefined();
+        });
+    });
+
+    it('sends lyrics when user input has more than 5 non-whitespace chars', async () => {
+        mockApiFetch.mockResolvedValue({ task_id: 'user-lyrics-task', status: 'queued' });
+
+        render(<MusicGeneratorForm onJobCreated={mockOnJobCreated} />);
+        fireEvent.click(screen.getByRole('button', { name: /Advanced/i }));
+
+        fireEvent.change(screen.getByRole('textbox', { name: /Prompt/i }), { target: { value: 'A pop song' } });
+        // 6 non-whitespace chars — should be sent
+        fireEvent.change(screen.getByRole('textbox', { name: /Lyrics/i }), { target: { value: 'hello!' } });
+
+        fireEvent.click(screen.getByRole('button', { name: /Generate Music/i }));
+
+        await waitFor(() => {
+            const body = JSON.parse((mockApiFetch.mock.calls[0][1] as { body: string }).body);
+            expect(body.lyrics).toBe('hello!');
+        });
+    });
+
+    it('sends instrumental flag and omits lyrics when instrumental checkbox is checked', async () => {
+        mockApiFetch.mockResolvedValue({ task_id: 'inst-task', status: 'queued' });
+
+        render(<MusicGeneratorForm onJobCreated={mockOnJobCreated} />);
+        fireEvent.click(screen.getByRole('button', { name: /Advanced/i }));
+
+        fireEvent.change(screen.getByRole('textbox', { name: /Prompt/i }), { target: { value: 'A piano piece' } });
+        fireEvent.change(screen.getByRole('textbox', { name: /Lyrics/i }), { target: { value: 'some lyrics here that are long' } });
+        fireEvent.click(screen.getByRole('checkbox', { name: /Instrumental only/i }));
+
+        fireEvent.click(screen.getByRole('button', { name: /Generate Music/i }));
+
+        await waitFor(() => {
+            const body = JSON.parse((mockApiFetch.mock.calls[0][1] as { body: string }).body);
+            expect(body.instrumental).toBe(true);
+            expect(body.lyrics).toBeUndefined();
+        });
+    });
+
+    it('disables lyrics textarea when instrumental checkbox is checked', () => {
+        render(<MusicGeneratorForm onJobCreated={mockOnJobCreated} />);
+        fireEvent.click(screen.getByRole('button', { name: /Advanced/i }));
+
+        const lyricsTextarea = screen.getByRole('textbox', { name: /Lyrics/i });
+        expect(lyricsTextarea).not.toBeDisabled();
+
+        fireEvent.click(screen.getByRole('checkbox', { name: /Instrumental only/i }));
+        expect(lyricsTextarea).toBeDisabled();
     });
 
     it('handles API errors', async () => {

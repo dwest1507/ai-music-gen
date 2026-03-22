@@ -29,6 +29,7 @@ class GenerationRequest(BaseModel):
     audio_format: str = Field("mp3")
     thinking: bool = Field(True)
     use_format: bool = Field(False)
+    instrumental: bool = Field(False)
     bpm: Optional[int] = Field(None, ge=30, le=300)
     key_scale: Optional[str] = None
     time_signature: Optional[str] = None
@@ -118,7 +119,12 @@ def _build_release_task_payload(gen_request: GenerationRequest) -> dict:
     if gen_request.genre:
         prompt = f"{gen_request.genre}. {prompt}"
 
-    lyrics = gen_request.lyrics if gen_request.lyrics else "[Instrumental]"
+    if gen_request.instrumental:
+        lyrics = "[Instrumental]"
+    elif gen_request.lyrics:
+        lyrics = gen_request.lyrics
+    else:
+        lyrics = ""  # empty string lets ACE-Step auto-generate lyrics
 
     payload: dict = {
         "prompt": prompt,

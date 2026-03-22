@@ -89,7 +89,7 @@ Supports optional API key via:
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `prompt` | string | `""` | Music description (alias: `caption`) |
-| `lyrics` | string | `""` | Lyrics content |
+| `lyrics` | string | `""` | Lyrics content (empty = AI auto-generates) |
 | `audio_duration` | float | null | Duration in seconds (10–600) |
 | `thinking` | bool | `false` | Use LM for enhanced generation |
 | `vocal_language` | string | `"en"` | Lyrics language |
@@ -115,7 +115,7 @@ Supports optional API key via:
 | FR-1 | User can enter a text prompt describing the music they want | Must |
 | FR-2 | User can select audio duration (30s, 60s, 120s, or custom 10–600s) | Must |
 | FR-3 | User can optionally select a genre | Must |
-| FR-4 | User can optionally provide lyrics | Should |
+| FR-4 | AI auto-generates lyrics by default; user can override with custom lyrics (> 5 non-whitespace chars) or suppress vocals with an "Instrumental only" toggle | Should |
 | FR-5 | System submits generation task to ACE-Step API and returns a task ID | Must |
 | FR-6 | System polls the ACE-Step API for task completion | Must |
 | FR-7 | User sees real-time status updates (queued → processing → completed/failed) | Must |
@@ -243,7 +243,8 @@ Request body (Pydantic model):
 ```json
 {
   "prompt": "string (required, max 500 chars)",
-  "lyrics": "string (optional, max 5000 chars)",
+  "lyrics": "string (optional, max 5000 chars — only sent when user provides > 5 non-whitespace chars)",
+  "instrumental": "bool (optional, default false — forces [Instrumental] lyrics on the backend)",
   "duration": "float (optional, 10-300, default 60)",
   "genre": "string (optional)",
   "vocal_language": "string (optional, default 'en')",
@@ -271,7 +272,10 @@ Response (202 Accepted):
 
 The backend transforms this into the ACE-Step `/release_task` payload:
 - `prompt` → `prompt` (prepend genre if provided)
-- `lyrics` → `lyrics` (default `"[Instrumental]"` if empty)
+- `lyrics` / `instrumental` → `lyrics`:
+  - `instrumental=true` → `"[Instrumental]"` (no vocals)
+  - `lyrics` non-empty → use provided lyrics
+  - Otherwise → `""` (empty string lets ACE-Step auto-generate lyrics)
 - `duration` → `audio_duration`
 - `thinking` → `thinking`
 - Other fields mapped 1:1
@@ -332,7 +336,8 @@ frontend/src/
 **`api.ts`** — API client mapping to backend API structure. Forms typed requests and parses typed responses.
 
 **`MusicGeneratorForm.tsx`** — Provides:
-- Optional lyrics textarea
+- Lyrics textarea (only sent when user types > 5 non-whitespace chars; otherwise AI auto-generates)
+- "Instrumental only" checkbox in advanced mode (disables lyrics textarea, sends `instrumental: true`)
 - Vocal language selector
 - "Simple / Advanced" mode toggle
 - Advanced mode mapping: BPM, key/scale, time signature, inference steps

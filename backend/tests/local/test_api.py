@@ -64,13 +64,25 @@ async def test_submit_generation_with_lyrics(async_client, mock_acestep_client):
 
 
 @pytest.mark.asyncio
-async def test_submit_generation_instrumental_default(
-    async_client, mock_acestep_client
-):
-    """When no lyrics provided, default to [Instrumental]."""
-    mock_acestep_client.submit_task.return_value = {"task_id": "inst-task"}
+async def test_submit_generation_auto_lyrics_default(async_client, mock_acestep_client):
+    """When no lyrics provided and instrumental=False, pass empty string so ACE-Step auto-generates lyrics."""
+    mock_acestep_client.submit_task.return_value = {"task_id": "auto-lyrics-task"}
 
     payload = {"prompt": "A jazz melody"}
+    response = await async_client.post("/api/generate", json=payload)
+    assert response.status_code == 202
+
+    call_args = mock_acestep_client.submit_task.call_args[0][0]
+    assert call_args["lyrics"] == ""
+
+
+@pytest.mark.asyncio
+async def test_submit_generation_instrumental_flag(async_client, mock_acestep_client):
+    """When instrumental=True, pass [Instrumental] to ACE-Step regardless of lyrics field."""
+    mock_acestep_client.submit_task.return_value = {"task_id": "inst-task"}
+
+    async_client.cookies.set("session_id", "test-instrumental-session")
+    payload = {"prompt": "A jazz melody", "instrumental": True}
     response = await async_client.post("/api/generate", json=payload)
     assert response.status_code == 202
 
