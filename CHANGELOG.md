@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.0](https://github.com/dwest1507/ai-music-gen/compare/ai-music-gen-v0.5.0...ai-music-gen-v0.6.0) (2026-03-22)
+
+
+### Features
+
+* new cyberpunk UI design ([8fe7c77](https://github.com/dwest1507/ai-music-gen/commit/8fe7c7751021674a32a342a5ed21100334c3a338))
+
 ## [0.5.0](https://github.com/dwest1507/ai-music-gen/compare/ai-music-gen-v0.4.0...ai-music-gen-v0.5.0) (2026-03-17)
 
 
