@@ -33,6 +33,37 @@ interface JobStatusProps {
     jobId: string;
 }
 
+const STATUS_CONFIG = {
+    queued: {
+        color: "#ffd700",
+        label: "Queued",
+        icon: Loader2,
+        spin: true,
+        shadow: "0 0 6px #ffd700",
+    },
+    processing: {
+        color: "#00d4ff",
+        label: "Processing",
+        icon: Loader2,
+        spin: true,
+        shadow: "0 0 6px #00d4ff",
+    },
+    completed: {
+        color: "#00ff88",
+        label: "Complete",
+        icon: CheckCircle2,
+        spin: false,
+        shadow: "0 0 8px #00ff88",
+    },
+    failed: {
+        color: "#ff3366",
+        label: "Failed",
+        icon: XCircle,
+        spin: false,
+        shadow: "0 0 6px #ff3366",
+    },
+} as const;
+
 export function JobStatus({ jobId }: JobStatusProps) {
     const [job, setJob] = useState<JobResponse | null>(null);
     const [error, setError] = useState<string | null>(null);
@@ -40,12 +71,11 @@ export function JobStatus({ jobId }: JobStatusProps) {
     const [generatingMessageIndex, setGeneratingMessageIndex] = useState(0);
     const generatingIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
-    // Poll for job updates
     useEffect(() => {
         let timeoutId: NodeJS.Timeout;
         let isMounted = true;
         const startTime = Date.now();
-        const MAX_POLLING_TIME = 10 * 60 * 1000; // 10 minutes timeout
+        const MAX_POLLING_TIME = 10 * 60 * 1000;
 
         const fetchJobStatus = async () => {
             if (!isMounted) return;
@@ -77,7 +107,6 @@ export function JobStatus({ jobId }: JobStatusProps) {
                 }
             }
 
-            // Calculate next delay: < 1 min: 2s, < 2 min: 5s, > 2 min: 10s
             let nextDelay = 2000;
             if (elapsed > 120000) {
                 nextDelay = 10000;
@@ -100,7 +129,6 @@ export function JobStatus({ jobId }: JobStatusProps) {
         };
     }, [jobId, isPolling]);
 
-    // Cycle generating messages every 10s while queued or processing
     useEffect(() => {
         const isActive = job?.status === "queued" || job?.status === "processing";
         if (!isActive) {
@@ -110,7 +138,7 @@ export function JobStatus({ jobId }: JobStatusProps) {
             }
             return;
         }
-        if (generatingIntervalRef.current) return; // already running
+        if (generatingIntervalRef.current) return;
         generatingIntervalRef.current = setInterval(() => {
             setGeneratingMessageIndex(prev =>
                 prev < GENERATING_MESSAGES.length - 1 ? prev + 1 : prev
@@ -126,10 +154,10 @@ export function JobStatus({ jobId }: JobStatusProps) {
 
     if (error) {
         return (
-            <Card className="w-full max-w-2xl mx-auto border-destructive/50 bg-destructive/5">
-                <CardContent className="pt-6 flex items-center gap-4 text-destructive">
-                    <AlertCircle className="w-8 h-8" />
-                    <p>{error}</p>
+            <Card className="w-full max-w-2xl mx-auto">
+                <CardContent className="pt-6 flex items-center gap-3" style={{ color: "#ff3366" }}>
+                    <AlertCircle className="w-5 h-5 shrink-0" strokeWidth={1.5} style={{ filter: "drop-shadow(0 0 4px #ff3366)" }} />
+                    <p className="text-sm">{error}</p>
                 </CardContent>
             </Card>
         );
@@ -138,82 +166,125 @@ export function JobStatus({ jobId }: JobStatusProps) {
     if (!job) {
         return (
             <Card className="w-full max-w-2xl mx-auto">
-                <CardContent className="pt-6 flex items-center justify-center py-8">
-                    <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
-                    <span className="ml-3 text-muted-foreground">Initializing job...</span>
+                <CardContent className="pt-6 flex items-center justify-center py-10 gap-3">
+                    <Loader2 className="w-5 h-5 animate-spin" style={{ color: "#00ff88" }} strokeWidth={1.5} />
+                    <span className="text-xs uppercase tracking-[0.12em] text-muted-foreground">
+                        Initializing job...
+                    </span>
                 </CardContent>
             </Card>
         );
     }
 
-    // Prepare audio URLs (compatibility with both single and multiple responses)
     const audioUrls = job.audio_urls || (job.audio_url ? [job.audio_url] : []);
+    const statusConfig = STATUS_CONFIG[job.status as keyof typeof STATUS_CONFIG];
+    const StatusIcon = statusConfig?.icon ?? AlertCircle;
 
     return (
-        <Card className="w-full max-w-2xl mx-auto mt-6 animate-in fade-in slide-in-from-bottom-4 duration-500 shadow-lg border-primary/20">
-            <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-lg">
-                    {job.status === "queued" && <Loader2 className="w-5 h-5 animate-spin text-yellow-500" />}
-                    {job.status === "processing" && <Loader2 className="w-5 h-5 animate-spin text-blue-500" />}
-                    {job.status === "completed" && <CheckCircle2 className="w-5 h-5 text-green-500" />}
-                    {job.status === "failed" && <XCircle className="w-5 h-5 text-red-500" />}
+        <Card
+            className="w-full max-w-2xl mx-auto mt-6 animate-in fade-in slide-in-from-bottom-4 duration-500"
+            style={job.status === "completed"
+                ? { borderColor: "#00ff8840", boxShadow: "0 0 20px rgba(0,255,136,0.08)" }
+                : job.status === "failed"
+                ? { borderColor: "#ff336640" }
+                : {}
+            }
+        >
+            {/* Terminal header */}
+            <div
+                className="flex items-center justify-between px-4 py-2 border-b"
+                style={{ borderColor: "#2a2a3a", background: "#0a0a0f" }}
+            >
+                <div className="flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full" style={{ background: "#ff3366", boxShadow: "0 0 3px #ff3366" }} />
+                    <span className="w-2 h-2 rounded-full" style={{ background: "#ffd700", boxShadow: "0 0 3px #ffd700" }} />
+                    <span className="w-2 h-2 rounded-full" style={{ background: "#00ff88", boxShadow: "0 0 3px #00ff88" }} />
+                </div>
+                <span className="text-[10px] uppercase tracking-[0.15em] text-muted-foreground">
+                    job:{jobId.slice(0, 8)}
+                </span>
+                {statusConfig && (
+                    <span
+                        className="text-[10px] uppercase tracking-[0.15em] font-medium"
+                        style={{ color: statusConfig.color, textShadow: statusConfig.shadow }}
+                    >
+                        {statusConfig.label}
+                    </span>
+                )}
+            </div>
 
-                    <span className="capitalize">
-                        {job.status === "queued" && GENERATING_MESSAGES[generatingMessageIndex]}
-                        {job.status === "processing" && GENERATING_MESSAGES[generatingMessageIndex]}
+            <CardHeader className="pb-2 pt-5">
+                <CardTitle className="flex items-center gap-2 text-sm">
+                    <StatusIcon
+                        className={`w-4 h-4 ${statusConfig?.spin ? "animate-spin" : ""}`}
+                        strokeWidth={1.5}
+                        style={{
+                            color: statusConfig?.color ?? "#6b7280",
+                            filter: statusConfig ? `drop-shadow(0 0 4px ${statusConfig.color})` : undefined,
+                        }}
+                    />
+                    <span style={{ color: statusConfig?.color ?? "#e0e0e0" }}>
+                        {(job.status === "queued" || job.status === "processing") && GENERATING_MESSAGES[generatingMessageIndex]}
                         {job.status === "completed" && "Generation Complete!"}
                         {job.status === "failed" && "Generation Failed"}
                     </span>
                 </CardTitle>
 
                 {job.metadata && (job.metadata.prompt || job.metadata.genre) && (
-                    <CardDescription className="italic line-clamp-2">
+                    <CardDescription className="italic line-clamp-2 mt-1 text-xs">
                         &quot;{job.metadata.prompt}&quot;
                     </CardDescription>
                 )}
             </CardHeader>
 
-            <CardContent className="space-y-6">
+            <CardContent className="space-y-5">
                 {/* Metadata Badges */}
                 {job.metadata && (
-                    <div className="flex flex-wrap gap-2 pt-2 border-t border-border mt-2">
+                    <div className="flex flex-wrap gap-2 pt-3 border-t" style={{ borderColor: "#2a2a3a" }}>
                         {job.metadata.duration && (
                             <Badge variant="secondary" className="flex items-center gap-1">
-                                <Clock className="w-3 h-3" /> {job.metadata.duration}s
+                                <Clock className="w-2.5 h-2.5" strokeWidth={1.5} /> {job.metadata.duration}s
                             </Badge>
                         )}
                         {job.metadata.bpm && (
                             <Badge variant="secondary" className="flex items-center gap-1">
-                                <Activity className="w-3 h-3" /> {job.metadata.bpm} BPM
+                                <Activity className="w-2.5 h-2.5" strokeWidth={1.5} /> {job.metadata.bpm} BPM
                             </Badge>
                         )}
                         {job.metadata.key_scale && (
                             <Badge variant="secondary" className="flex items-center gap-1">
-                                <Music className="w-3 h-3" /> {job.metadata.key_scale}
+                                <Music className="w-2.5 h-2.5" strokeWidth={1.5} /> {job.metadata.key_scale}
                             </Badge>
                         )}
                         {job.metadata.time_signature && (
                             <Badge variant="secondary" className="flex items-center gap-1">
-                                <Hash className="w-3 h-3" /> {job.metadata.time_signature}
+                                <Hash className="w-2.5 h-2.5" strokeWidth={1.5} /> {job.metadata.time_signature}
                             </Badge>
                         )}
                     </div>
                 )}
 
                 {job.status === "failed" && (
-                    <div className="text-destructive bg-destructive/10 p-3 rounded-md flex items-start gap-2">
-                        <AlertCircle className="w-5 h-5 mt-0.5 shrink-0" />
+                    <div
+                        className="text-xs p-3 flex items-start gap-2"
+                        style={{
+                            color: "#ff3366",
+                            background: "rgba(255,51,102,0.08)",
+                            border: "1px solid rgba(255,51,102,0.3)",
+                        }}
+                    >
+                        <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" strokeWidth={1.5} />
                         <span>{job.error || "An unknown error occurred."}</span>
                     </div>
                 )}
 
                 {job.status === "completed" && audioUrls.length > 0 && (
-                    <div className="space-y-6 pt-4">
+                    <div className="space-y-5 pt-3">
                         {audioUrls.map((url, index) => (
                             <div key={index} className="space-y-2">
                                 {audioUrls.length > 1 && (
-                                    <h4 className="text-sm font-medium flex items-center gap-2 text-muted-foreground">
-                                        <FileAudio className="w-4 h-4" />
+                                    <h4 className="text-[10px] uppercase tracking-[0.15em] font-medium flex items-center gap-2 text-muted-foreground">
+                                        <FileAudio className="w-3.5 h-3.5" strokeWidth={1.5} />
                                         Variation {index + 1}
                                     </h4>
                                 )}

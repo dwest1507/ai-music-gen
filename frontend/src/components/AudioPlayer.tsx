@@ -26,12 +26,12 @@ export function AudioPlayer({ audioUrl, className }: AudioPlayerProps) {
 
         wavesurferRef.current = WaveSurfer.create({
             container: containerRef.current,
-            waveColor: "#a1a1aa",
-            progressColor: "#18181b", // darker color for progress
-            cursorColor: "#18181b",
+            waveColor: "#2a2a3a",
+            progressColor: "#00ff88",
+            cursorColor: "#00ff88",
             barWidth: 2,
             barGap: 3,
-            height: 60,
+            height: 56,
             normalize: true,
             url: fullAudioUrl,
         });
@@ -70,21 +70,18 @@ export function AudioPlayer({ audioUrl, className }: AudioPlayerProps) {
                 fullAudioUrl.startsWith("http") ? undefined : window.location.origin
             );
 
-            // Try to use the task ID from the URL path: /api/audio/{task_id}
             const parts = urlObj.pathname.split("/");
             const taskId = parts[parts.length - 1];
             if (taskId && taskId !== "audio") {
                 filename = `music_${taskId}.mp3`;
             }
 
-            // Fallback: Try to extract from ?path= query param if still present
             const pathParam = urlObj.searchParams.get("path");
             if (pathParam && pathParam.includes(".")) {
                 const pathParts = pathParam.split("/");
                 filename = pathParts[pathParts.length - 1];
             }
         } catch {
-            // Fallback formats
             if (fullAudioUrl.includes("wav")) filename = "generated-music.wav";
             else if (fullAudioUrl.includes("flac")) filename = "generated-music.flac";
         }
@@ -96,21 +93,32 @@ export function AudioPlayer({ audioUrl, className }: AudioPlayerProps) {
     };
 
     return (
-        <div className={cn("w-full bg-card border rounded-lg p-4 shadow-sm", className)}>
+        <div
+            className={cn("w-full p-4 border", className)}
+            style={{
+                background: "#0a0a0f",
+                borderColor: "#2a2a3a",
+                boxShadow: isPlaying ? "0 0 15px rgba(0,255,136,0.1)" : undefined,
+                transition: "box-shadow 300ms",
+            }}
+        >
             <div
                 ref={containerRef}
-                className={cn("w-full mb-4", !isReady && "opacity-50 pointer-events-none")}
+                className={cn("w-full mb-4", !isReady && "opacity-30 pointer-events-none")}
             />
 
             <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                     <Button
                         size="icon"
-                        variant="outline"
+                        variant="default"
                         onClick={togglePlay}
                         disabled={!isReady}
                     >
-                        {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+                        {isPlaying
+                            ? <Pause className="h-3.5 w-3.5" strokeWidth={1.5} />
+                            : <Play className="h-3.5 w-3.5" strokeWidth={1.5} />
+                        }
                     </Button>
 
                     <Button
@@ -119,18 +127,21 @@ export function AudioPlayer({ audioUrl, className }: AudioPlayerProps) {
                         onClick={toggleMute}
                         disabled={!isReady}
                     >
-                        {isMuted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
+                        {isMuted
+                            ? <VolumeX className="h-3.5 w-3.5" strokeWidth={1.5} />
+                            : <Volume2 className="h-3.5 w-3.5" strokeWidth={1.5} />
+                        }
                     </Button>
                 </div>
 
                 <Button
-                    variant="secondary"
+                    variant="outline"
                     size="sm"
                     onClick={handleDownload}
                     disabled={!isReady}
-                    className="gap-2"
+                    className="gap-1.5"
                 >
-                    <Download className="h-4 w-4" />
+                    <Download className="h-3.5 w-3.5" strokeWidth={1.5} />
                     Download
                 </Button>
             </div>
