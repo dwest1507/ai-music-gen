@@ -62,6 +62,7 @@ export interface GenerateRequest {
     audio_format?: string;
     thinking?: boolean;
     use_format?: boolean;
+    instrumental?: boolean;
     bpm?: number;
     key_scale?: string;
     time_signature?: string;

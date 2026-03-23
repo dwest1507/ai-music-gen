@@ -1,5 +1,5 @@
 import pytest
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 
 
@@ -64,13 +64,88 @@ async def test_submit_generation_with_lyrics(async_client, mock_acestep_client):
 
 
 @pytest.mark.asyncio
-async def test_submit_generation_instrumental_default(
+async def test_submit_generation_auto_lyrics_default(async_client, mock_acestep_client):
+    """When no lyrics provided and GROQ_API_KEY is absent, pass empty string so ACE-Step auto-generates lyrics."""
+    mock_acestep_client.submit_task.return_value = {"task_id": "auto-lyrics-task"}
+
+    with patch(
+        "app.api.routes.generation.generate_lyrics", new=AsyncMock(return_value="")
+    ):
+        payload = {"prompt": "A jazz melody"}
+        response = await async_client.post("/api/generate", json=payload)
+    assert response.status_code == 202
+
+    call_args = mock_acestep_client.submit_task.call_args[0][0]
+    assert call_args["lyrics"] == ""
+
+
+@pytest.mark.asyncio
+async def test_submit_generation_groq_auto_lyrics(async_client, mock_acestep_client):
+    """When no lyrics provided and Groq returns lyrics, they are forwarded to ACE-Step."""
+    mock_acestep_client.submit_task.return_value = {"task_id": "groq-lyrics-task"}
+    generated = "[Verse]\nWalking in the rain\n\n[Chorus]\nWe rise again"
+
+    async_client.cookies.set("session_id", "test-groq-auto-lyrics-session")
+    with patch(
+        "app.api.routes.generation.generate_lyrics",
+        new=AsyncMock(return_value=generated),
+    ):
+        payload = {"prompt": "A jazz melody"}
+        response = await async_client.post("/api/generate", json=payload)
+
+    assert response.status_code == 202
+    call_args = mock_acestep_client.submit_task.call_args[0][0]
+    assert call_args["lyrics"] == generated
+
+
+@pytest.mark.asyncio
+async def test_submit_generation_user_lyrics_skip_groq(
     async_client, mock_acestep_client
 ):
-    """When no lyrics provided, default to [Instrumental]."""
+    """When user provides lyrics, generate_lyrics is NOT called."""
+    mock_acestep_client.submit_task.return_value = {"task_id": "user-lyrics-task"}
+
+    async_client.cookies.set("session_id", "test-user-lyrics-skip-groq-session")
+    mock_gen = AsyncMock()
+    with patch("app.api.routes.generation.generate_lyrics", new=mock_gen):
+        payload = {
+            "prompt": "A pop ballad",
+            "lyrics": "Hello world, this is my song",
+        }
+        response = await async_client.post("/api/generate", json=payload)
+
+    assert response.status_code == 202
+    mock_gen.assert_not_called()
+    call_args = mock_acestep_client.submit_task.call_args[0][0]
+    assert call_args["lyrics"] == "Hello world, this is my song"
+
+
+@pytest.mark.asyncio
+async def test_submit_generation_instrumental_skips_groq(
+    async_client, mock_acestep_client
+):
+    """When instrumental=True, generate_lyrics is NOT called."""
+    mock_acestep_client.submit_task.return_value = {"task_id": "inst-groq-task"}
+
+    mock_gen = AsyncMock()
+    async_client.cookies.set("session_id", "test-inst-groq-session")
+    with patch("app.api.routes.generation.generate_lyrics", new=mock_gen):
+        payload = {"prompt": "A jazz melody", "instrumental": True}
+        response = await async_client.post("/api/generate", json=payload)
+
+    assert response.status_code == 202
+    mock_gen.assert_not_called()
+    call_args = mock_acestep_client.submit_task.call_args[0][0]
+    assert call_args["lyrics"] == "[Instrumental]"
+
+
+@pytest.mark.asyncio
+async def test_submit_generation_instrumental_flag(async_client, mock_acestep_client):
+    """When instrumental=True, pass [Instrumental] to ACE-Step regardless of lyrics field."""
     mock_acestep_client.submit_task.return_value = {"task_id": "inst-task"}
 
-    payload = {"prompt": "A jazz melody"}
+    async_client.cookies.set("session_id", "test-instrumental-session")
+    payload = {"prompt": "A jazz melody", "instrumental": True}
     response = await async_client.post("/api/generate", json=payload)
     assert response.status_code == 202
 

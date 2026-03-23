@@ -21,6 +21,7 @@ uv run python -m unittest discover -s backend/tests -p "*_test.py"
 ### Test Coverage Focus
 - **`acestep_client.py`:** Use mocked HTTP responses (e.g., via `respx` or `unittest.mock`) to verify `submit_task()`, `query_result()`, and `download_audio()` functions map inputs to the upstream correctly, handle timeouts, and manage authentication.
 - **Route Validation (`generation.py`):** Assert that the FastAPI endpoints correctly validate incoming JSON bodies (checking Pydantic models for prompt limits, durations, etc.) and accurately return 400 schemas on failure.
+- **Lyrics Generator (`lyrics_generator.py`):** Mock `AsyncGroq` to verify that: lyrics are generated and forwarded to ACE-Step when no user lyrics are provided; Groq errors fall back to `""`; `generate_lyrics` is skipped for instrumental requests and user-provided lyrics; all music parameters are included in the Groq prompt context.
 - **Security & Rate Limiting:** Verify that session-based limits return HTTP 429 when max requests are exceeded and session cookies are set correctly.
 
 *Note: You do not need to mock Redis or RQ jobs anymore.*

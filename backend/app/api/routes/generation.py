@@ -9,6 +9,7 @@ from pathlib import Path
 from app.core.config import settings
 from app.core.limiter import limiter
 from app.services.acestep_client import ACEStepClient, ACEStepError
+from app.services.lyrics_generator import generate_lyrics
 
 router = APIRouter()
 SESSION_COOKIE_NAME = "session_id"
@@ -29,6 +30,7 @@ class GenerationRequest(BaseModel):
     audio_format: str = Field("mp3")
     thinking: bool = Field(True)
     use_format: bool = Field(False)
+    instrumental: bool = Field(False)
     bpm: Optional[int] = Field(None, ge=30, le=300)
     key_scale: Optional[str] = None
     time_signature: Optional[str] = None
@@ -112,13 +114,24 @@ def get_session_id(request: Request, response: Response) -> str:
     return session_id
 
 
-def _build_release_task_payload(gen_request: GenerationRequest) -> dict:
+def _build_release_task_payload(
+    gen_request: GenerationRequest, auto_lyrics: str = ""
+) -> dict:
     """Transform a GenerationRequest into the ACE-Step /release_task payload."""
     prompt = gen_request.prompt
     if gen_request.genre:
         prompt = f"{gen_request.genre}. {prompt}"
 
-    lyrics = gen_request.lyrics if gen_request.lyrics else "[Instrumental]"
+    if gen_request.instrumental:
+        lyrics = "[Instrumental]"
+    elif gen_request.lyrics:
+        # User provided explicit lyrics
+        lyrics = gen_request.lyrics
+    elif auto_lyrics:
+        # Groq-generated lyrics
+        lyrics = auto_lyrics
+    else:
+        lyrics = ""  # empty string lets ACE-Step auto-generate lyrics
 
     payload: dict = {
         "prompt": prompt,
@@ -178,7 +191,20 @@ async def submit_generation(
     """Submit a music generation task to the ACE-Step API."""
     get_session_id(request, response)  # ensure session cookie is set
 
-    payload = _build_release_task_payload(gen_request)
+    # Auto-generate lyrics via Groq when the user didn't provide any and it's
+    # not an instrumental-only request.
+    auto_lyrics = ""
+    if not gen_request.instrumental and not gen_request.lyrics:
+        auto_lyrics = await generate_lyrics(
+            prompt=gen_request.prompt,
+            duration=gen_request.duration,
+            genre=gen_request.genre,
+            vocal_language=gen_request.vocal_language,
+            bpm=gen_request.bpm,
+            key_scale=gen_request.key_scale,
+        )
+
+    payload = _build_release_task_payload(gen_request, auto_lyrics=auto_lyrics)
     client = _get_client(request)
 
     try:

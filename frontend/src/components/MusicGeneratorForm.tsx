@@ -40,6 +40,7 @@ const generateSchema = z.object({
     audio_format: z.enum(["mp3", "wav", "flac"]).optional(),
     thinking: z.boolean().optional(),
     use_format: z.boolean().optional(),
+    instrumental: z.boolean().optional(),
     bpm: z.coerce.number().int().min(30).max(300).optional().or(z.literal('')),
     key_scale: z.string().optional(),
     time_signature: z.string().optional(),
@@ -91,6 +92,7 @@ export function MusicGeneratorForm({ onJobCreated }: MusicGeneratorFormProps) {
     const [audioFormat, setAudioFormat] = useState<"mp3" | "wav" | "flac">("mp3");
     const [thinking, setThinking] = useState(true);
     const [useFormat, setUseFormat] = useState(false);
+    const [instrumental, setInstrumental] = useState(false);
     const [bpm, setBpm] = useState("");
     const [keyScale, setKeyScale] = useState("");
     const [timeSignature, setTimeSignature] = useState("");
@@ -155,15 +157,21 @@ export function MusicGeneratorForm({ onJobCreated }: MusicGeneratorFormProps) {
         setLastSubmitTime(now);
 
         try {
+            // Send user lyrics only when they contain substantial content (> 5 non-whitespace chars).
+            // Otherwise leave lyrics undefined so the AI auto-generates them.
+            // The instrumental flag overrides both and forces [Instrumental] on the backend.
+            const hasUserLyrics = lyrics.replace(/\s/g, "").length > 5;
+
             const payloadInput = {
                 prompt,
                 duration: (parseInt(durationMins || "0") * 60) + parseInt(durationSecs || "0"),
                 genre: genre || undefined,
-                lyrics: lyrics || undefined,
+                lyrics: (!instrumental && hasUserLyrics) ? lyrics : undefined,
                 vocal_language: vocalLanguage,
                 audio_format: audioFormat,
                 thinking,
                 use_format: useFormat,
+                instrumental: instrumental || undefined,
                 bpm: bpm ? parseInt(bpm) : undefined,
                 key_scale: keyScale || undefined,
                 time_signature: timeSignature || undefined,
@@ -376,14 +384,14 @@ export function MusicGeneratorForm({ onJobCreated }: MusicGeneratorFormProps) {
                             <div className="space-y-2">
                                 <Label htmlFor="lyrics">
                                     Lyrics
-                                    <FieldTooltip text="Song lyrics with structure tags like [Verse], [Chorus], [Bridge]. Leave blank for AI auto-generation. Use [Instrumental] to explicitly skip vocals." />
+                                    <FieldTooltip text="Song lyrics with structure tags like [Verse], [Chorus], [Bridge]. Enter more than 5 non-whitespace characters to use your own lyrics; otherwise the AI auto-generates them. Check 'Instrumental only' to skip vocals entirely." />
                                 </Label>
                                 <textarea
                                     id="lyrics"
-                                    placeholder="Enter your lyrics here..."
+                                    placeholder="Leave blank for AI auto-generated lyrics..."
                                     value={lyrics}
                                     onChange={(e) => setLyrics(e.target.value)}
-                                    disabled={isLoading}
+                                    disabled={isLoading || instrumental}
                                     className="cyber-input flex min-h-[80px] w-full resize-y px-3 py-2 text-sm"
                                 />
                             </div>
@@ -528,6 +536,18 @@ export function MusicGeneratorForm({ onJobCreated }: MusicGeneratorFormProps) {
                                     />
                                     LM Format Prompt/Lyrics
                                     <FieldTooltip text="Uses the AI to enhance and structure your prompt and lyrics before generation. Useful when your input is short or informal." />
+                                </label>
+                                <label className="flex items-center gap-2 text-[10px] font-medium uppercase tracking-[0.12em] text-muted-foreground cursor-pointer">
+                                    <input
+                                        type="checkbox"
+                                        id="instrumental"
+                                        checked={instrumental}
+                                        onChange={(e) => setInstrumental(e.target.checked)}
+                                        disabled={isLoading}
+                                        className="w-3.5 h-3.5 accent-[#00ff88]"
+                                    />
+                                    Instrumental only
+                                    <FieldTooltip text="Generate music without any vocals. Disables AI lyrics generation and ignores any lyrics input." />
                                 </label>
                             </div>
                         </div>

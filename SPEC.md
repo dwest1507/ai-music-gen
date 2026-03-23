@@ -89,7 +89,7 @@ Supports optional API key via:
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `prompt` | string | `""` | Music description (alias: `caption`) |
-| `lyrics` | string | `""` | Lyrics content |
+| `lyrics` | string | `""` | Lyrics content (empty = AI auto-generates) |
 | `audio_duration` | float | null | Duration in seconds (10–600) |
 | `thinking` | bool | `false` | Use LM for enhanced generation |
 | `vocal_language` | string | `"en"` | Lyrics language |
@@ -115,7 +115,7 @@ Supports optional API key via:
 | FR-1 | User can enter a text prompt describing the music they want | Must |
 | FR-2 | User can select audio duration (30s, 60s, 120s, or custom 10–600s) | Must |
 | FR-3 | User can optionally select a genre | Must |
-| FR-4 | User can optionally provide lyrics | Should |
+| FR-4 | AI auto-generates lyrics by default; user can override with custom lyrics (> 5 non-whitespace chars) or suppress vocals with an "Instrumental only" toggle | Should |
 | FR-5 | System submits generation task to ACE-Step API and returns a task ID | Must |
 | FR-6 | System polls the ACE-Step API for task completion | Must |
 | FR-7 | User sees real-time status updates (queued → processing → completed/failed) | Must |
@@ -191,7 +191,8 @@ backend/
 │   │   └── routes/
 │   │       └── generation.py      # All API routes
 │   └── services/
-│       └── acestep_client.py      # HTTP client for ACE-Step API
+│       ├── acestep_client.py      # HTTP client for ACE-Step API
+│       └── lyrics_generator.py    # Groq-based lyrics auto-generation
 ├── tests/
 ├── requirements.txt
 └── Dockerfile
@@ -205,6 +206,7 @@ backend/
 | `ACESTEP_API_KEY` | API key for ACE-Step API authentication (if enabled) | No |
 | `FRONTEND_URL` | Frontend origin(s) for CORS | Yes |
 | `SESSION_SECRET` | Secret for session management | Yes |
+| `GROQ_API_KEY` | Groq API key for lyrics auto-generation (`openai/gpt-oss-120b`) | No |
 
 #### 5.2.3 ACE-Step Client Service (`acestep_client.py`)
 
@@ -221,6 +223,20 @@ Takes care of communicating with the model API:
 # - Get random sample (POST /create_random_sample)
 # - Format input (POST /format_input)
 # - Error handling and retry logic
+```
+
+#### 5.2.4 Lyrics Generator Service (`lyrics_generator.py`)
+
+Auto-generates song lyrics via Groq (`openai/gpt-oss-120b`) before the generation task is submitted:
+
+```python
+# Responsibilities:
+# - Called by submit_generation when: lyrics is empty AND instrumental=False
+# - Builds a context-aware prompt from: description, genre, BPM, key, duration, language
+# - Generates structured lyrics following ACE-Step tag conventions
+#   ([Verse], [Chorus], [Bridge], etc.)
+# - Returns empty string as fallback when GROQ_API_KEY is absent or Groq errors
+#   (ACE-Step then auto-generates lyrics itself)
 ```
 
 #### 5.2.4 API Routes (`generation.py`)
@@ -243,7 +259,8 @@ Request body (Pydantic model):
 ```json
 {
   "prompt": "string (required, max 500 chars)",
-  "lyrics": "string (optional, max 5000 chars)",
+  "lyrics": "string (optional, max 5000 chars — only sent when user provides > 5 non-whitespace chars)",
+  "instrumental": "bool (optional, default false — forces [Instrumental] lyrics on the backend)",
   "duration": "float (optional, 10-300, default 60)",
   "genre": "string (optional)",
   "vocal_language": "string (optional, default 'en')",
@@ -271,7 +288,11 @@ Response (202 Accepted):
 
 The backend transforms this into the ACE-Step `/release_task` payload:
 - `prompt` → `prompt` (prepend genre if provided)
-- `lyrics` → `lyrics` (default `"[Instrumental]"` if empty)
+- `lyrics` / `instrumental` → `lyrics` (resolution order):
+  1. `instrumental=true` → `"[Instrumental]"` (no vocals)
+  2. `lyrics` non-empty (user-provided) → use provided lyrics as-is
+  3. No lyrics + not instrumental → call Groq `lyrics_generator.generate_lyrics()`;
+     use the result if non-empty, otherwise fall back to `""` (ACE-Step auto-generates)
 - `duration` → `audio_duration`
 - `thinking` → `thinking`
 - Other fields mapped 1:1
@@ -332,7 +353,8 @@ frontend/src/
 **`api.ts`** — API client mapping to backend API structure. Forms typed requests and parses typed responses.
 
 **`MusicGeneratorForm.tsx`** — Provides:
-- Optional lyrics textarea
+- Lyrics textarea (only sent when user types > 5 non-whitespace chars; otherwise AI auto-generates)
+- "Instrumental only" checkbox in advanced mode (disables lyrics textarea, sends `instrumental: true`)
 - Vocal language selector
 - "Simple / Advanced" mode toggle
 - Advanced mode mapping: BPM, key/scale, time signature, inference steps
@@ -383,6 +405,9 @@ Branch protection rules on `main` enforce that no PRs can be merged without pass
 ACESTEP_API_URL=https://<WORKSPACE>--acestep-api-fastapi-app.modal.run
 ACESTEP_API_KEY=                    # Optional, if API key auth is enabled
 
+# Groq API (for automatic lyrics generation via openai/gpt-oss-120b)
+GROQ_API_KEY=                       # Optional; falls back to ACE-Step auto-generation if absent
+
 # Session security (generate with: openssl rand -hex 32)
 SESSION_SECRET=your_session_secret_here
 
@@ -427,6 +452,7 @@ These improvements were identified during a system design review and implemented
 - **Session-based Rate Limiting**: The `slowapi` rate limiter utilizes the cryptographically secure `session_id` cookie rather than IP addresses. This aligns with "per session" rate limiting (NFR-2) and prevents issues on NAT-sharing networks.
 - **Frontend Polling Backoff & Timeout**: The `JobStatus` polling mechanism implements an exponential backoff after the first minute and includes an upper-bound timeout to prevent infinite polling.
 - **Duplicate Submission Guard**: The frontend generation form includes idempotency and duplicate submission guarding to prevent overlapping expensive inference requests.
+- **Groq Lyrics Pre-Generation**: When a user submits without lyrics (and not instrumental), the backend calls the Groq API (`openai/gpt-oss-120b`) to generate structured, ACE-Step-tagged lyrics before submitting to Modal. This produces higher-quality vocal tracks compared to ACE-Step's built-in auto-generation. Gracefully falls back to ACE-Step's own generation when `GROQ_API_KEY` is absent or the Groq call fails.
 
 ### 8.2 Post-MVP Features
 

@@ -7,11 +7,19 @@ The AI Music Generation backend acts as a stateless HTTP proxy over the ACE-Step
 ### `POST /api/generate`
 Submits a new music generation task.
 
+**Lyrics resolution order (backend):**
+1. `instrumental: true` → forces `[Instrumental]` (no vocals)
+2. `lyrics` provided (> 5 non-whitespace chars) → uses the supplied lyrics as-is
+3. No lyrics + not instrumental → backend calls Groq (`openai/gpt-oss-120b`) to generate structured
+   lyrics with ACE-Step tags ([Verse], [Chorus], etc.). Falls back to ACE-Step's own auto-generation
+   if `GROQ_API_KEY` is absent or the Groq call fails.
+
 **Request Body:**
 ```json
 {
   "prompt": "Epic orchestral score",
   "lyrics": "Optional lyrics here",
+  "instrumental": false,
   "duration": 60,
   "genre": "Soundtrack",
   "vocal_language": "en",
