@@ -191,7 +191,8 @@ backend/
 │   │   └── routes/
 │   │       └── generation.py      # All API routes
 │   └── services/
-│       └── acestep_client.py      # HTTP client for ACE-Step API
+│       ├── acestep_client.py      # HTTP client for ACE-Step API
+│       └── lyrics_generator.py    # Groq-based lyrics auto-generation
 ├── tests/
 ├── requirements.txt
 └── Dockerfile
@@ -205,6 +206,7 @@ backend/
 | `ACESTEP_API_KEY` | API key for ACE-Step API authentication (if enabled) | No |
 | `FRONTEND_URL` | Frontend origin(s) for CORS | Yes |
 | `SESSION_SECRET` | Secret for session management | Yes |
+| `GROQ_API_KEY` | Groq API key for lyrics auto-generation (`openai/gpt-oss-120b`) | No |
 
 #### 5.2.3 ACE-Step Client Service (`acestep_client.py`)
 
@@ -221,6 +223,20 @@ Takes care of communicating with the model API:
 # - Get random sample (POST /create_random_sample)
 # - Format input (POST /format_input)
 # - Error handling and retry logic
+```
+
+#### 5.2.4 Lyrics Generator Service (`lyrics_generator.py`)
+
+Auto-generates song lyrics via Groq (`openai/gpt-oss-120b`) before the generation task is submitted:
+
+```python
+# Responsibilities:
+# - Called by submit_generation when: lyrics is empty AND instrumental=False
+# - Builds a context-aware prompt from: description, genre, BPM, key, duration, language
+# - Generates structured lyrics following ACE-Step tag conventions
+#   ([Verse], [Chorus], [Bridge], etc.)
+# - Returns empty string as fallback when GROQ_API_KEY is absent or Groq errors
+#   (ACE-Step then auto-generates lyrics itself)
 ```
 
 #### 5.2.4 API Routes (`generation.py`)
@@ -272,10 +288,11 @@ Response (202 Accepted):
 
 The backend transforms this into the ACE-Step `/release_task` payload:
 - `prompt` → `prompt` (prepend genre if provided)
-- `lyrics` / `instrumental` → `lyrics`:
-  - `instrumental=true` → `"[Instrumental]"` (no vocals)
-  - `lyrics` non-empty → use provided lyrics
-  - Otherwise → `""` (empty string lets ACE-Step auto-generate lyrics)
+- `lyrics` / `instrumental` → `lyrics` (resolution order):
+  1. `instrumental=true` → `"[Instrumental]"` (no vocals)
+  2. `lyrics` non-empty (user-provided) → use provided lyrics as-is
+  3. No lyrics + not instrumental → call Groq `lyrics_generator.generate_lyrics()`;
+     use the result if non-empty, otherwise fall back to `""` (ACE-Step auto-generates)
 - `duration` → `audio_duration`
 - `thinking` → `thinking`
 - Other fields mapped 1:1
@@ -388,6 +405,9 @@ Branch protection rules on `main` enforce that no PRs can be merged without pass
 ACESTEP_API_URL=https://<WORKSPACE>--acestep-api-fastapi-app.modal.run
 ACESTEP_API_KEY=                    # Optional, if API key auth is enabled
 
+# Groq API (for automatic lyrics generation via openai/gpt-oss-120b)
+GROQ_API_KEY=                       # Optional; falls back to ACE-Step auto-generation if absent
+
 # Session security (generate with: openssl rand -hex 32)
 SESSION_SECRET=your_session_secret_here
 
@@ -432,6 +452,7 @@ These improvements were identified during a system design review and implemented
 - **Session-based Rate Limiting**: The `slowapi` rate limiter utilizes the cryptographically secure `session_id` cookie rather than IP addresses. This aligns with "per session" rate limiting (NFR-2) and prevents issues on NAT-sharing networks.
 - **Frontend Polling Backoff & Timeout**: The `JobStatus` polling mechanism implements an exponential backoff after the first minute and includes an upper-bound timeout to prevent infinite polling.
 - **Duplicate Submission Guard**: The frontend generation form includes idempotency and duplicate submission guarding to prevent overlapping expensive inference requests.
+- **Groq Lyrics Pre-Generation**: When a user submits without lyrics (and not instrumental), the backend calls the Groq API (`openai/gpt-oss-120b`) to generate structured, ACE-Step-tagged lyrics before submitting to Modal. This produces higher-quality vocal tracks compared to ACE-Step's built-in auto-generation. Gracefully falls back to ACE-Step's own generation when `GROQ_API_KEY` is absent or the Groq call fails.
 
 ### 8.2 Post-MVP Features
 

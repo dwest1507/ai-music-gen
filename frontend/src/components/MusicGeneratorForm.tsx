@@ -537,14 +537,14 @@ export function MusicGeneratorForm({ onJobCreated }: MusicGeneratorFormProps) {
                                     LM Format Prompt/Lyrics
                                     <FieldTooltip text="Uses the AI to enhance and structure your prompt and lyrics before generation. Useful when your input is short or informal." />
                                 </label>
-                                <label className="flex items-center gap-2 text-sm font-medium leading-none">
+                                <label className="flex items-center gap-2 text-[10px] font-medium uppercase tracking-[0.12em] text-muted-foreground cursor-pointer">
                                     <input
                                         type="checkbox"
                                         id="instrumental"
                                         checked={instrumental}
                                         onChange={(e) => setInstrumental(e.target.checked)}
                                         disabled={isLoading}
-                                        className="rounded border-gray-300"
+                                        className="w-3.5 h-3.5 accent-[#00ff88]"
                                     />
                                     Instrumental only
                                     <FieldTooltip text="Generate music without any vocals. Disables AI lyrics generation and ignores any lyrics input." />
