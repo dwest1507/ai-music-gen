@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.1](https://github.com/dwest1507/ai-music-gen/compare/ai-music-gen-v0.7.0...ai-music-gen-v0.7.1) (2026-04-05)
+
+
+### Bug Fixes
+
+* handle non-JSON response gracefully ([#48](https://github.com/dwest1507/ai-music-gen/issues/48)) ([8a5920c](https://github.com/dwest1507/ai-music-gen/commit/8a5920cc3f408e30d8bc9d9c910e9aca0537ac86))
+
 ## [0.7.0](https://github.com/dwest1507/ai-music-gen/compare/ai-music-gen-v0.6.0...ai-music-gen-v0.7.0) (2026-03-23)
 
 
