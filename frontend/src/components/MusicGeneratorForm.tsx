@@ -384,7 +384,7 @@ export function MusicGeneratorForm({ onJobCreated }: MusicGeneratorFormProps) {
                             <div className="space-y-2">
                                 <Label htmlFor="lyrics">
                                     Lyrics
-                                    <FieldTooltip text="Song lyrics with structure tags like [Verse], [Chorus], [Bridge]. Enter more than 5 non-whitespace characters to use your own lyrics; otherwise the AI auto-generates them. Check 'Instrumental only' to skip vocals entirely." />
+                                    <FieldTooltip text="Song lyrics with structure tags like [Verse], [Chorus], [Bridge]. Enter more than 5 non-whitespace characters to use your own lyrics; otherwise ACE-Step's built-in AI auto-generates them. Check 'Instrumental only' to skip vocals entirely." />
                                 </Label>
                                 <textarea
                                     id="lyrics"

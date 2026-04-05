@@ -1,5 +1,5 @@
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock
 import httpx
 
 
@@ -64,79 +64,74 @@ async def test_submit_generation_with_lyrics(async_client, mock_acestep_client):
 
 
 @pytest.mark.asyncio
-async def test_submit_generation_auto_lyrics_default(async_client, mock_acestep_client):
-    """When no lyrics provided and GROQ_API_KEY is absent, pass empty string so ACE-Step auto-generates lyrics."""
+async def test_submit_generation_no_lyrics_enables_sample_mode(
+    async_client, mock_acestep_client
+):
+    """When no lyrics provided, sample_mode=True and sample_query are set for ACE-Step auto-generation."""
     mock_acestep_client.submit_task.return_value = {"task_id": "auto-lyrics-task"}
 
-    with patch(
-        "app.api.routes.generation.generate_lyrics", new=AsyncMock(return_value="")
-    ):
-        payload = {"prompt": "A jazz melody"}
-        response = await async_client.post("/api/generate", json=payload)
+    payload = {"prompt": "A jazz melody"}
+    response = await async_client.post("/api/generate", json=payload)
     assert response.status_code == 202
 
     call_args = mock_acestep_client.submit_task.call_args[0][0]
     assert call_args["lyrics"] == ""
+    assert call_args["sample_mode"] is True
+    assert call_args["sample_query"] == "A jazz melody (lyrics in English)"
 
 
 @pytest.mark.asyncio
-async def test_submit_generation_groq_auto_lyrics(async_client, mock_acestep_client):
-    """When no lyrics provided and Groq returns lyrics, they are forwarded to ACE-Step."""
-    mock_acestep_client.submit_task.return_value = {"task_id": "groq-lyrics-task"}
-    generated = "[Verse]\nWalking in the rain\n\n[Chorus]\nWe rise again"
-
-    async_client.cookies.set("session_id", "test-groq-auto-lyrics-session")
-    with patch(
-        "app.api.routes.generation.generate_lyrics",
-        new=AsyncMock(return_value=generated),
-    ):
-        payload = {"prompt": "A jazz melody"}
-        response = await async_client.post("/api/generate", json=payload)
-
-    assert response.status_code == 202
-    call_args = mock_acestep_client.submit_task.call_args[0][0]
-    assert call_args["lyrics"] == generated
-
-
-@pytest.mark.asyncio
-async def test_submit_generation_user_lyrics_skip_groq(
+async def test_submit_generation_sample_mode_includes_language_hint(
     async_client, mock_acestep_client
 ):
-    """When user provides lyrics, generate_lyrics is NOT called."""
+    """When sample_mode is enabled, sample_query includes the vocal language hint."""
+    mock_acestep_client.submit_task.return_value = {"task_id": "lang-hint-task"}
+
+    async_client.cookies.set("session_id", "test-lang-hint-session")
+    payload = {"prompt": "A trap rap song", "vocal_language": "es"}
+    response = await async_client.post("/api/generate", json=payload)
+    assert response.status_code == 202
+
+    call_args = mock_acestep_client.submit_task.call_args[0][0]
+    assert call_args["sample_mode"] is True
+    assert call_args["sample_query"] == "A trap rap song (lyrics in Spanish)"
+
+
+@pytest.mark.asyncio
+async def test_submit_generation_user_lyrics_disables_sample_mode(
+    async_client, mock_acestep_client
+):
+    """When user provides lyrics, sample_mode is NOT set."""
     mock_acestep_client.submit_task.return_value = {"task_id": "user-lyrics-task"}
 
-    async_client.cookies.set("session_id", "test-user-lyrics-skip-groq-session")
-    mock_gen = AsyncMock()
-    with patch("app.api.routes.generation.generate_lyrics", new=mock_gen):
-        payload = {
-            "prompt": "A pop ballad",
-            "lyrics": "Hello world, this is my song",
-        }
-        response = await async_client.post("/api/generate", json=payload)
+    payload = {
+        "prompt": "A pop ballad",
+        "lyrics": "Hello world, this is my song",
+    }
+    response = await async_client.post("/api/generate", json=payload)
 
     assert response.status_code == 202
-    mock_gen.assert_not_called()
     call_args = mock_acestep_client.submit_task.call_args[0][0]
     assert call_args["lyrics"] == "Hello world, this is my song"
+    assert "sample_mode" not in call_args
+    assert "sample_query" not in call_args
 
 
 @pytest.mark.asyncio
-async def test_submit_generation_instrumental_skips_groq(
+async def test_submit_generation_instrumental_disables_sample_mode(
     async_client, mock_acestep_client
 ):
-    """When instrumental=True, generate_lyrics is NOT called."""
-    mock_acestep_client.submit_task.return_value = {"task_id": "inst-groq-task"}
+    """When instrumental=True, sample_mode is NOT set."""
+    mock_acestep_client.submit_task.return_value = {"task_id": "inst-task"}
 
-    mock_gen = AsyncMock()
-    async_client.cookies.set("session_id", "test-inst-groq-session")
-    with patch("app.api.routes.generation.generate_lyrics", new=mock_gen):
-        payload = {"prompt": "A jazz melody", "instrumental": True}
-        response = await async_client.post("/api/generate", json=payload)
+    payload = {"prompt": "A jazz melody", "instrumental": True}
+    response = await async_client.post("/api/generate", json=payload)
 
     assert response.status_code == 202
-    mock_gen.assert_not_called()
     call_args = mock_acestep_client.submit_task.call_args[0][0]
     assert call_args["lyrics"] == "[Instrumental]"
+    assert "sample_mode" not in call_args
+    assert "sample_query" not in call_args
 
 
 @pytest.mark.asyncio
@@ -337,6 +332,7 @@ async def test_submit_generation_error(async_client, mock_acestep_client):
     mock_acestep_client.submit_task.side_effect = ACEStepError(
         "Service unavailable", 503
     )
+    async_client.cookies.set("session_id", "test-submit-error-session")
     response = await async_client.post("/api/generate", json={"prompt": "test track"})
     assert response.status_code == 503
 
@@ -347,6 +343,7 @@ async def test_submit_generation_with_bpm_key_timesig(
 ):
     """bpm, key_scale, and time_signature should be forwarded in the payload."""
     mock_acestep_client.submit_task.return_value = {"task_id": "bpm-task"}
+    async_client.cookies.set("session_id", "test-bpm-key-timesig-session")
     payload = {
         "prompt": "A track with metadata",
         "bpm": 120,
