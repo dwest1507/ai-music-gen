@@ -3,7 +3,7 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from app.services.lyrics_generator import generate_lyrics, _clean_lyrics
+from app.services.lyrics_generator import generate_lyrics, _clean_lyrics, _MAX_RETRIES
 
 
 # ── _clean_lyrics unit tests ─────────────────────────────────────
@@ -51,10 +51,10 @@ class TestCleanLyrics:
         )
         assert _clean_lyrics(raw) == raw.strip()
 
-    def test_returns_empty_for_no_tags(self):
-        """If there are no structure tags at all, return empty string."""
-        raw = "This is just a paragraph about music with no tags."
-        assert _clean_lyrics(raw) == ""
+    def test_returns_untagged_text_when_no_tags(self):
+        """If there are no structure tags, return the cleaned text as-is."""
+        raw = "Walking through the rain\nSearching for a sign\nWe rise again"
+        assert _clean_lyrics(raw) == raw
 
     def test_handles_whitespace_only(self):
         """Whitespace-only input returns empty string."""
@@ -78,6 +78,52 @@ class TestCleanLyrics:
         """[Guitar Solo] tags are preserved."""
         raw = "[Verse]\nHello\n\n[Guitar Solo]\n\n[Outro]\nGoodbye"
         assert _clean_lyrics(raw) == raw
+
+    def test_normalizes_crlf_line_endings(self):
+        """Windows-style \\r\\n line endings are normalized before processing."""
+        raw = "[Verse]\r\nWalking through the rain\r\n\r\n[Chorus]\r\nWe rise again"
+        expected = "[Verse]\nWalking through the rain\n\n[Chorus]\nWe rise again"
+        assert _clean_lyrics(raw) == expected
+
+    def test_normalizes_cr_only_line_endings(self):
+        """Old Mac-style \\r line endings are normalized."""
+        raw = "[Verse]\rHello world\r\r[Chorus]\rLa la la"
+        expected = "[Verse]\nHello world\n\n[Chorus]\nLa la la"
+        assert _clean_lyrics(raw) == expected
+
+    def test_preserves_lyrics_across_blank_lines_within_section(self):
+        """Blank lines between lyric lines within a section are preserved."""
+        raw = (
+            "[Verse]\nWalking through the rain\n\n"
+            "Searching for a sign\n\n"
+            "[Chorus]\nWe rise again"
+        )
+        assert _clean_lyrics(raw) == raw.strip()
+
+    def test_preserves_all_sections_with_spaced_lyrics(self):
+        """Multiple sections are preserved even when lyrics have blank-line gaps."""
+        raw = (
+            "[Intro]\n\n"
+            "[Verse]\nLine one\n\nLine two\n\n"
+            "[Chorus]\nChorus line one\n\nChorus line two\n\n"
+            "[Outro]\nFade away"
+        )
+        assert _clean_lyrics(raw) == raw.strip()
+
+    def test_strips_trailing_commentary_after_last_section(self):
+        """Commentary after a blank gap following the last section is stripped."""
+        raw = (
+            "[Verse]\nHello world\n\n"
+            "[Chorus]\nWe rise\n\n"
+            "Feel free to adjust these lyrics as needed!"
+        )
+        expected = "[Verse]\nHello world\n\n[Chorus]\nWe rise"
+        assert _clean_lyrics(raw) == expected
+
+    def test_untagged_text_with_markdown_fences(self):
+        """Markdown fences are stripped even when no structure tags exist."""
+        raw = "```\nWalking through the rain\nWe rise again\n```"
+        assert _clean_lyrics(raw) == "Walking through the rain\nWe rise again"
 
 
 @pytest.mark.asyncio
@@ -139,7 +185,7 @@ async def test_generate_lyrics_strips_whitespace():
 
 @pytest.mark.asyncio
 async def test_generate_lyrics_returns_empty_on_groq_error():
-    """When Groq raises an exception, generate_lyrics falls back to empty string."""
+    """When Groq raises an exception on all attempts, falls back to empty string."""
     mock_client = AsyncMock()
     mock_client.chat.completions.create = AsyncMock(
         side_effect=Exception("Network error")
@@ -148,16 +194,18 @@ async def test_generate_lyrics_returns_empty_on_groq_error():
     with (
         patch("app.services.lyrics_generator.settings") as mock_settings,
         patch("app.services.lyrics_generator.AsyncGroq", return_value=mock_client),
+        patch("app.services.lyrics_generator.asyncio.sleep", new=AsyncMock()),
     ):
         mock_settings.GROQ_API_KEY = "test-key"  # pragma: allowlist secret
         result = await generate_lyrics(prompt="A rock anthem")
 
     assert result == ""
+    assert mock_client.chat.completions.create.call_count == _MAX_RETRIES
 
 
 @pytest.mark.asyncio
 async def test_generate_lyrics_returns_empty_when_content_is_none():
-    """When Groq returns None content, generate_lyrics returns empty string."""
+    """When Groq returns None content on all attempts, returns empty string."""
     mock_message = MagicMock()
     mock_message.content = None
     mock_choice = MagicMock()
@@ -171,11 +219,48 @@ async def test_generate_lyrics_returns_empty_when_content_is_none():
     with (
         patch("app.services.lyrics_generator.settings") as mock_settings,
         patch("app.services.lyrics_generator.AsyncGroq", return_value=mock_client),
+        patch("app.services.lyrics_generator.asyncio.sleep", new=AsyncMock()),
     ):
         mock_settings.GROQ_API_KEY = "test-key"  # pragma: allowlist secret
         result = await generate_lyrics(prompt="Ambient soundscape")
 
     assert result == ""
+    assert mock_client.chat.completions.create.call_count == _MAX_RETRIES
+
+
+@pytest.mark.asyncio
+async def test_generate_lyrics_retries_on_empty_content_then_succeeds():
+    """When Groq returns empty content on first attempt but succeeds on retry."""
+    empty_message = MagicMock()
+    empty_message.content = ""
+    empty_choice = MagicMock()
+    empty_choice.message = empty_message
+    empty_response = MagicMock()
+    empty_response.choices = [empty_choice]
+
+    expected = "[Verse]\nGot it on retry"
+    good_message = MagicMock()
+    good_message.content = expected
+    good_choice = MagicMock()
+    good_choice.message = good_message
+    good_response = MagicMock()
+    good_response.choices = [good_choice]
+
+    mock_client = AsyncMock()
+    mock_client.chat.completions.create = AsyncMock(
+        side_effect=[empty_response, good_response]
+    )
+
+    with (
+        patch("app.services.lyrics_generator.settings") as mock_settings,
+        patch("app.services.lyrics_generator.AsyncGroq", return_value=mock_client),
+        patch("app.services.lyrics_generator.asyncio.sleep", new=AsyncMock()),
+    ):
+        mock_settings.GROQ_API_KEY = "test-key"  # pragma: allowlist secret
+        result = await generate_lyrics(prompt="A pop song")
+
+    assert result == expected
+    assert mock_client.chat.completions.create.call_count == 2
 
 
 @pytest.mark.asyncio
@@ -241,3 +326,79 @@ async def test_generate_lyrics_unknown_language_defaults_to_english():
     messages = call_kwargs[1]["messages"]
     user_content = messages[1]["content"]
     assert "English" in user_content
+
+
+@pytest.mark.asyncio
+async def test_generate_lyrics_retries_on_transient_failure():
+    """When Groq fails on first attempt but succeeds on retry, lyrics are returned."""
+    expected = "[Verse]\nRetried and got it"
+
+    mock_message = MagicMock()
+    mock_message.content = expected
+    mock_choice = MagicMock()
+    mock_choice.message = mock_message
+    mock_response = MagicMock()
+    mock_response.choices = [mock_choice]
+
+    mock_client = AsyncMock()
+    mock_client.chat.completions.create = AsyncMock(
+        side_effect=[Exception("Transient error"), mock_response]
+    )
+
+    with (
+        patch("app.services.lyrics_generator.settings") as mock_settings,
+        patch("app.services.lyrics_generator.AsyncGroq", return_value=mock_client),
+        patch("app.services.lyrics_generator.asyncio.sleep", new=AsyncMock()),
+    ):
+        mock_settings.GROQ_API_KEY = "test-key"  # pragma: allowlist secret
+        result = await generate_lyrics(prompt="A pop song")
+
+    assert result == expected
+    assert mock_client.chat.completions.create.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_generate_lyrics_returns_empty_after_all_retries_exhausted():
+    """When all retry attempts fail, returns empty string."""
+    mock_client = AsyncMock()
+    mock_client.chat.completions.create = AsyncMock(
+        side_effect=Exception("Persistent error")
+    )
+
+    with (
+        patch("app.services.lyrics_generator.settings") as mock_settings,
+        patch("app.services.lyrics_generator.AsyncGroq", return_value=mock_client),
+        patch("app.services.lyrics_generator.asyncio.sleep", new=AsyncMock()),
+    ):
+        mock_settings.GROQ_API_KEY = "test-key"  # pragma: allowlist secret
+        result = await generate_lyrics(prompt="A rock anthem")
+
+    assert result == ""
+    assert mock_client.chat.completions.create.call_count == _MAX_RETRIES
+
+
+@pytest.mark.asyncio
+async def test_generate_lyrics_passes_timeout_to_groq_client():
+    """The Groq client is created with an explicit timeout."""
+    mock_message = MagicMock()
+    mock_message.content = "[Verse]\nTest"
+    mock_choice = MagicMock()
+    mock_choice.message = mock_message
+    mock_response = MagicMock()
+    mock_response.choices = [mock_choice]
+
+    mock_client = AsyncMock()
+    mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
+
+    with (
+        patch("app.services.lyrics_generator.settings") as mock_settings,
+        patch(
+            "app.services.lyrics_generator.AsyncGroq", return_value=mock_client
+        ) as mock_groq_cls,
+    ):
+        mock_settings.GROQ_API_KEY = "test-key"  # pragma: allowlist secret
+        await generate_lyrics(prompt="A song")
+
+    mock_groq_cls.assert_called_once_with(
+        api_key=mock_settings.GROQ_API_KEY, timeout=30.0
+    )
