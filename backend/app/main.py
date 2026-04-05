@@ -1,3 +1,4 @@
+import logging
 from contextlib import asynccontextmanager
 
 import httpx
@@ -11,10 +12,18 @@ from app.core.limiter import limiter
 from app.api.routes import generation
 from app.services.acestep_client import ACEStepClient
 
+# Ensure app-level loggers are visible (uvicorn only configures its own loggers)
+logging.basicConfig(level=logging.INFO, format="%(levelname)s:%(name)s:%(message)s")
+logger = logging.getLogger(__name__)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Manage the lifecycle of the shared httpx client and ACE-Step client."""
+    if settings.GROQ_API_KEY:
+        logger.info("GROQ_API_KEY is configured — lyrics auto-generation enabled")
+    else:
+        logger.warning("GROQ_API_KEY is not set — lyrics auto-generation is disabled")
     async with httpx.AsyncClient(http2=True) as http_client:
         app.state.acestep_client = ACEStepClient(http_client)
         yield
@@ -54,6 +63,7 @@ app.include_router(
 async def health_check():
     """Health check — reports local status and optionally pings upstream."""
     result = {"status": "healthy", "version": "1.0.0"}
+    result["groq_configured"] = bool(settings.GROQ_API_KEY)
     try:
         upstream = await app.state.acestep_client.health_check()
         result["upstream"] = "healthy"
