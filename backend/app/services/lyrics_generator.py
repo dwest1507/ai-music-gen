@@ -7,12 +7,17 @@ Falls back to empty string (ACE-Step auto-generation) on any error or when
 GROQ_API_KEY is not configured.
 """
 
+import asyncio
 import logging
 import re
 
 from groq import AsyncGroq
 
 from app.core.config import settings
+
+_MAX_RETRIES = 3
+_RETRY_DELAY = 1.0  # seconds
+_GROQ_TIMEOUT = 30.0  # seconds
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +65,7 @@ needs more duration for the same lyrics.
 - 180 s+    : add instrumental/solo sections and extend repeats accordingly
 
 Output ONLY the lyrics with structure tags — no explanations, no titles, no commentary.\
+DO NOT ask any questions. Just return the lyrics.
 """
 
 _LANGUAGE_NAMES: dict[str, str] = {
@@ -85,6 +91,11 @@ _STRUCTURE_TAG_RE = re.compile(r"^\[[A-Za-z].*\]$", re.MULTILINE)
 def _clean_lyrics(raw: str) -> str:
     """Strip preamble, markdown fences, and trailing commentary from LLM output."""
     text = raw.strip()
+    if not text:
+        return ""
+
+    # Normalize line endings (LLMs may return \r\n)
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
 
     # Remove markdown code fences (```lyrics ... ``` or ``` ... ```)
     text = re.sub(r"^```[a-zA-Z]*\n?", "", text)
@@ -94,29 +105,39 @@ def _clean_lyrics(raw: str) -> str:
     # Drop lines before the first structure tag like [Verse], [Intro], etc.
     match = _STRUCTURE_TAG_RE.search(text)
     if not match:
-        return ""
+        # No structure tags found — return the cleaned text as-is rather than
+        # discarding it. Untagged lyrics are still usable by ACE-Step.
+        logger.info("No structure tags found in lyrics; returning untagged text")
+        return text
     text = text[match.start() :]
 
     # Drop trailing commentary after the last lyrics section.
-    # Strategy: walk line by line. A [Tag] opens a section. Non-blank lines
-    # directly after a tag (no blank separator) are lyrics. Once we hit a
-    # blank line, the next non-blank line must be a [Tag] to continue;
-    # otherwise it's commentary and we stop.
+    # Strategy: find the position of the last structure tag. Everything from
+    # the start through the last tag's section (lyrics lines after it) is kept.
+    # Only strip text that appears after a blank-line gap following the last
+    # tag's lyrics — that trailing block is likely LLM commentary.
     lines = text.split("\n")
-    last_good = 0
-    after_blank = False
+    last_tag_index = 0
     for i, line in enumerate(lines):
-        stripped = line.strip()
+        if _STRUCTURE_TAG_RE.match(line.strip()):
+            last_tag_index = i
+
+    # From the last tag, find the end of its lyrics section
+    last_good = last_tag_index
+    after_blank = False
+    for i in range(last_tag_index + 1, len(lines)):
+        stripped = lines[i].strip()
         if _STRUCTURE_TAG_RE.match(stripped):
+            # Another tag after the "last" — shouldn't happen, but handle it
             after_blank = False
             last_good = i
         elif not stripped:
             after_blank = True
         elif after_blank:
-            # Non-blank, non-tag line after a blank gap — commentary
+            # Non-blank, non-tag line after a blank gap following the last
+            # section — this is trailing commentary, stop here.
             break
         else:
-            # Lyric content line directly under a tag (no blank separator)
             last_good = i
 
     text = "\n".join(lines[: last_good + 1]).rstrip()
@@ -157,30 +178,66 @@ async def generate_lyrics(
 
     user_message = "\n".join(parts)
 
-    try:
-        logger.info("Generating lyrics via Groq for prompt: %.80s", prompt)
-        client = AsyncGroq(api_key=settings.GROQ_API_KEY)
-        response = await client.chat.completions.create(
-            model="openai/gpt-oss-120b",
-            messages=[
-                {"role": "system", "content": _SYSTEM_PROMPT},
-                {"role": "user", "content": user_message},
-            ],
-            temperature=1,
-            max_completion_tokens=2048,
-            top_p=1,
-            reasoning_effort="medium",
-            stream=False,
-        )
-        raw = response.choices[0].message.content or ""
-        lyrics = _clean_lyrics(raw)
-        if not lyrics:
-            logger.warning(
-                "Lyrics cleaning produced empty result from raw (%d chars)", len(raw)
+    logger.info("Generating lyrics via Groq for prompt: %.80s", prompt)
+    client = AsyncGroq(api_key=settings.GROQ_API_KEY, timeout=_GROQ_TIMEOUT)
+
+    for attempt in range(1, _MAX_RETRIES + 1):
+        try:
+            response = await client.chat.completions.create(
+                model="openai/gpt-oss-120b",
+                messages=[
+                    {"role": "system", "content": _SYSTEM_PROMPT},
+                    {"role": "user", "content": user_message},
+                ],
+                temperature=1,
+                max_completion_tokens=8000,
+                top_p=1,
+                reasoning_effort="medium",
+                stream=False,
             )
-            return ""
-        logger.info("Lyrics generated successfully (%d chars)", len(lyrics))
-        return lyrics
-    except Exception:
-        logger.exception("Lyrics auto-generation failed; falling back to ACE-Step")
-        return ""
+            raw = response.choices[0].message.content or ""
+            logger.debug("Groq raw response (%d chars): %.200s", len(raw), raw)
+
+            # Treat empty/whitespace-only responses as retryable failures
+            if not raw.strip():
+                if attempt < _MAX_RETRIES:
+                    logger.warning(
+                        "Groq returned empty content (attempt %d/%d); retrying",
+                        attempt,
+                        _MAX_RETRIES,
+                    )
+                    await asyncio.sleep(_RETRY_DELAY)
+                    continue
+                logger.warning(
+                    "Groq returned empty content after %d attempts", _MAX_RETRIES
+                )
+                return ""
+
+            lyrics = _clean_lyrics(raw)
+            if not lyrics:
+                logger.warning(
+                    "Lyrics cleaning produced empty result from raw (%d chars):\n%s",
+                    len(raw),
+                    raw[:500],
+                )
+                return ""
+            logger.info("Lyrics generated successfully (%d chars)", len(lyrics))
+            return lyrics
+        except Exception as exc:
+            if attempt < _MAX_RETRIES:
+                logger.warning(
+                    "Groq lyrics attempt %d/%d failed (%s); retrying in %.1fs",
+                    attempt,
+                    _MAX_RETRIES,
+                    exc,
+                    _RETRY_DELAY,
+                )
+                await asyncio.sleep(_RETRY_DELAY)
+            else:
+                logger.exception(
+                    "Lyrics auto-generation failed after %d attempts; "
+                    "falling back to ACE-Step",
+                    _MAX_RETRIES,
+                )
+
+    return ""
