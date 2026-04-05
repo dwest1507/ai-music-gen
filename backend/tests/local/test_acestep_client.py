@@ -127,6 +127,21 @@ def test_unwrap_returns_body_when_no_data_key(acestep_client):
     assert acestep_client._unwrap(resp) == {"task_id": "abc"}
 
 
+def test_unwrap_empty_body_raises_502(acestep_client):
+    resp = Response(200, content=b"")
+    with pytest.raises(ACEStepError) as exc:
+        acestep_client._unwrap(resp)
+    assert exc.value.status_code == 502
+    assert "invalid response" in exc.value.message
+
+
+def test_unwrap_html_body_raises_502(acestep_client):
+    resp = Response(200, content=b"<html>error</html>")
+    with pytest.raises(ACEStepError) as exc:
+        acestep_client._unwrap(resp)
+    assert exc.value.status_code == 502
+
+
 # ── submit_task ───────────────────────────────────────────────────
 
 
