@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.0](https://github.com/dwest1507/ai-music-gen/compare/ai-music-gen-v0.7.3...ai-music-gen-v0.8.0) (2026-04-05)
+
+
+### Features
+
+* lyrics are now auto-generated using acestep models ([#55](https://github.com/dwest1507/ai-music-gen/issues/55)) ([5596b0c](https://github.com/dwest1507/ai-music-gen/commit/5596b0c5dd1420b0a3902be26f410a13abe24aeb))
+
 ## [0.7.3](https://github.com/dwest1507/ai-music-gen/compare/ai-music-gen-v0.7.2...ai-music-gen-v0.7.3) (2026-04-05)
 
 
