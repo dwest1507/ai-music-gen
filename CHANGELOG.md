@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.3](https://github.com/dwest1507/ai-music-gen/compare/ai-music-gen-v0.7.2...ai-music-gen-v0.7.3) (2026-04-05)
+
+
+### Bug Fixes
+
+* increased token limit for groq + retry mechanism if lyrics are not provided ([#53](https://github.com/dwest1507/ai-music-gen/issues/53)) ([9b0bdb8](https://github.com/dwest1507/ai-music-gen/commit/9b0bdb8887edef8d4d287f5ec724e5f6707484ac))
+
 ## [0.7.2](https://github.com/dwest1507/ai-music-gen/compare/ai-music-gen-v0.7.1...ai-music-gen-v0.7.2) (2026-04-05)
 
 
