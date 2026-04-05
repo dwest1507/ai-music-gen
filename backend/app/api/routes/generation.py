@@ -9,7 +9,6 @@ from pathlib import Path
 from app.core.config import settings
 from app.core.limiter import limiter
 from app.services.acestep_client import ACEStepClient, ACEStepError
-from app.services.lyrics_generator import generate_lyrics
 
 router = APIRouter()
 SESSION_COOKIE_NAME = "session_id"
@@ -17,6 +16,24 @@ SESSION_COOKIE_NAME = "session_id"
 # Path to the examples directory relative to this file
 # backend/app/api/routes/generation.py -> backend/app/api/routes -> backend/app/api -> backend/app -> backend -> project_root
 EXAMPLES_ROOT = Path(__file__).parent.parent.parent.parent / "examples"
+
+# Mapping of vocal_language codes to human-readable names, used to hint
+# the ACE-Step LM about the desired lyrics language in sample_mode.
+_VOCAL_LANGUAGE_NAMES: dict[str, str] = {
+    "bn": "Bengali",
+    "zh": "Chinese",
+    "en": "English",
+    "fr": "French",
+    "de": "German",
+    "he": "Hebrew",
+    "hu": "Hungarian",
+    "ja": "Japanese",
+    "ko": "Korean",
+    "ms": "Malay",
+    "pl": "Polish",
+    "pt": "Portuguese",
+    "es": "Spanish",
+}
 
 # ── Pydantic models ──────────────────────────────────────────────
 
@@ -114,9 +131,7 @@ def get_session_id(request: Request, response: Response) -> str:
     return session_id
 
 
-def _build_release_task_payload(
-    gen_request: GenerationRequest, auto_lyrics: str = ""
-) -> dict:
+def _build_release_task_payload(gen_request: GenerationRequest) -> dict:
     """Transform a GenerationRequest into the ACE-Step /release_task payload."""
     prompt = gen_request.prompt
     if gen_request.genre:
@@ -125,13 +140,9 @@ def _build_release_task_payload(
     if gen_request.instrumental:
         lyrics = "[Instrumental]"
     elif gen_request.lyrics:
-        # User provided explicit lyrics
         lyrics = gen_request.lyrics
-    elif auto_lyrics:
-        # Groq-generated lyrics
-        lyrics = auto_lyrics
     else:
-        lyrics = ""  # empty string lets ACE-Step auto-generate lyrics
+        lyrics = ""
 
     payload: dict = {
         "prompt": prompt,
@@ -144,6 +155,15 @@ def _build_release_task_payload(
         "inference_steps": gen_request.inference_steps,
         "batch_size": gen_request.batch_size,
     }
+
+    # When no lyrics are provided and it's not instrumental, delegate lyrics
+    # generation to ACE-Step's built-in 5Hz LM via sample_mode.
+    # We include the vocal language in the query because the Modal server
+    # treats "en" as "no preference" and may ignore the vocal_language field.
+    if not gen_request.instrumental and not gen_request.lyrics:
+        payload["sample_mode"] = True
+        lang_name = _VOCAL_LANGUAGE_NAMES.get(gen_request.vocal_language, "English")
+        payload["sample_query"] = f"{gen_request.prompt} (lyrics in {lang_name})"
 
     if gen_request.bpm is not None:
         payload["bpm"] = gen_request.bpm
@@ -191,20 +211,7 @@ async def submit_generation(
     """Submit a music generation task to the ACE-Step API."""
     get_session_id(request, response)  # ensure session cookie is set
 
-    # Auto-generate lyrics via Groq when the user didn't provide any and it's
-    # not an instrumental-only request.
-    auto_lyrics = ""
-    if not gen_request.instrumental and not gen_request.lyrics:
-        auto_lyrics = await generate_lyrics(
-            prompt=gen_request.prompt,
-            duration=gen_request.duration,
-            genre=gen_request.genre,
-            vocal_language=gen_request.vocal_language,
-            bpm=gen_request.bpm,
-            key_scale=gen_request.key_scale,
-        )
-
-    payload = _build_release_task_payload(gen_request, auto_lyrics=auto_lyrics)
+    payload = _build_release_task_payload(gen_request)
     client = _get_client(request)
 
     try:

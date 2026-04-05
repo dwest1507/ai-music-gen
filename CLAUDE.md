@@ -50,7 +50,6 @@ Copy `.env.example` to `.env` and populate:
 - `SESSION_SECRET` — Generate with `openssl rand -hex 32`
 - `FRONTEND_URL` — CORS allowed origin (default: `http://localhost:3000`)
 - `NEXT_PUBLIC_API_URL` — Backend URL visible to browser (default: `http://localhost:8000`)
-- `GROQ_API_KEY` — Groq API key for lyrics auto-generation (optional; falls back to ACE-Step's own generation)
 
 ## Architecture
 
@@ -68,7 +67,6 @@ Browser → Next.js (Vercel, port 3000)
 - **Config:** `app/core/config.py` — Pydantic Settings, reads from env
 - **Rate limiting:** `app/core/limiter.py` — slowapi, key = session cookie → IP fallback
 - **Service:** `app/services/acestep_client.py` — all Modal API calls (httpx AsyncClient, HTTP/2, shared lifecycle)
-- **Service:** `app/services/lyrics_generator.py` — Groq lyrics auto-generation (`openai/gpt-oss-120b`); called before task submission when no user lyrics provided
 - **Routes:** `app/api/routes/generation.py` — all `/api/*` endpoints
 
 Key endpoints and their rate limits:

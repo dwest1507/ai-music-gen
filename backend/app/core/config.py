@@ -12,9 +12,6 @@ class Settings:
     ACESTEP_API_URL: str = os.getenv("ACESTEP_API_URL", "")
     ACESTEP_API_KEY: str = os.getenv("ACESTEP_API_KEY", "")
 
-    # Groq API (for lyrics auto-generation)
-    GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")
-
     # Security
     SESSION_SECRET: str = os.getenv("SESSION_SECRET", "super-secret-key")
     FRONTEND_URL: str = os.getenv("FRONTEND_URL", "http://localhost:3000")
