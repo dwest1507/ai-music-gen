@@ -61,7 +61,18 @@ class ACEStepClient:
         if response.status_code >= 400:
             raise ACEStepError("Invalid generation parameters.", 400)
 
-        body = response.json()
+        try:
+            body = response.json()
+        except Exception:
+            logger.error(
+                "Non-JSON response from upstream (status=%s, body=%s)",
+                response.status_code,
+                response.text[:500],
+            )
+            raise ACEStepError(
+                "Music generation service returned an invalid response.", 502
+            )
+
         if body.get("error"):
             raise ACEStepError(
                 body["error"] if isinstance(body["error"], str) else str(body["error"]),
