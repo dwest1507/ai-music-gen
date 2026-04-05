@@ -3,7 +3,81 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from app.services.lyrics_generator import generate_lyrics
+from app.services.lyrics_generator import generate_lyrics, _clean_lyrics
+
+
+# ── _clean_lyrics unit tests ─────────────────────────────────────
+
+
+class TestCleanLyrics:
+    def test_clean_output_unchanged(self):
+        """Clean lyrics with only structure tags pass through unchanged."""
+        text = "[Verse]\nWalking through the rain\n\n[Chorus]\nWe rise again"
+        assert _clean_lyrics(text) == text
+
+    def test_strips_preamble_before_first_tag(self):
+        """Lines before the first [Tag] are removed."""
+        raw = "Here are the lyrics:\n\n[Verse]\nHello world\n\n[Chorus]\nLa la la"
+        assert _clean_lyrics(raw) == "[Verse]\nHello world\n\n[Chorus]\nLa la la"
+
+    def test_strips_markdown_code_fences(self):
+        """Markdown ``` fences are removed."""
+        raw = "```\n[Verse]\nHello\n\n[Chorus]\nWorld\n```"
+        assert _clean_lyrics(raw) == "[Verse]\nHello\n\n[Chorus]\nWorld"
+
+    def test_strips_markdown_code_fences_with_language(self):
+        """Markdown ```lyrics fences are removed."""
+        raw = "```lyrics\n[Verse]\nHello\n```"
+        assert _clean_lyrics(raw) == "[Verse]\nHello"
+
+    def test_strips_trailing_commentary(self):
+        """Commentary after the last lyric section is removed."""
+        raw = "[Verse]\nHello world\n\nFeel free to adjust these lyrics as needed!"
+        assert _clean_lyrics(raw) == "[Verse]\nHello world"
+
+    def test_strips_both_preamble_and_postamble(self):
+        """Both preamble and trailing commentary are stripped."""
+        raw = (
+            "Here's a song for you:\n\n[Verse]\nWalking down\n\n"
+            "[Chorus]\nWe shine\n\nHope you like it!"
+        )
+        assert _clean_lyrics(raw) == "[Verse]\nWalking down\n\n[Chorus]\nWe shine"
+
+    def test_preserves_multiple_sections(self):
+        """Multiple sections with blank separators are preserved."""
+        raw = (
+            "[Intro]\n\n[Verse]\nLine one\nLine two\n\n"
+            "[Chorus]\nChorus line\n\n[Outro]\nFade out"
+        )
+        assert _clean_lyrics(raw) == raw.strip()
+
+    def test_returns_empty_for_no_tags(self):
+        """If there are no structure tags at all, return empty string."""
+        raw = "This is just a paragraph about music with no tags."
+        assert _clean_lyrics(raw) == ""
+
+    def test_handles_whitespace_only(self):
+        """Whitespace-only input returns empty string."""
+        assert _clean_lyrics("   \n\n  ") == ""
+
+    def test_handles_empty_string(self):
+        """Empty string returns empty string."""
+        assert _clean_lyrics("") == ""
+
+    def test_title_line_before_tag(self):
+        """A title like 'Song Title' before the first tag is stripped."""
+        raw = "**Midnight Rain**\n\n[Verse]\nDrops on the window"
+        assert _clean_lyrics(raw) == "[Verse]\nDrops on the window"
+
+    def test_instrumental_tag_preserved(self):
+        """[Instrumental] and similar tags are preserved."""
+        raw = "[Intro]\n\n[Instrumental]\n\n[Verse]\nHello"
+        assert _clean_lyrics(raw) == raw
+
+    def test_guitar_solo_tag_preserved(self):
+        """[Guitar Solo] tags are preserved."""
+        raw = "[Verse]\nHello\n\n[Guitar Solo]\n\n[Outro]\nGoodbye"
+        assert _clean_lyrics(raw) == raw
 
 
 @pytest.mark.asyncio
