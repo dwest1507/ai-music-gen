@@ -72,7 +72,7 @@ async def generate_lyrics(
     to its own built-in lyrics generation.
     """
     if not settings.GROQ_API_KEY:
-        logger.debug("GROQ_API_KEY not configured; skipping lyrics pre-generation")
+        logger.warning("GROQ_API_KEY not configured; skipping lyrics pre-generation")
         return ""
 
     parts: list[str] = [f'Music description: "{prompt}"']
@@ -90,6 +90,7 @@ async def generate_lyrics(
     user_message = "\n".join(parts)
 
     try:
+        logger.info("Generating lyrics via Groq for prompt: %.80s", prompt)
         client = AsyncGroq(api_key=settings.GROQ_API_KEY)
         response = await client.chat.completions.create(
             model="openai/gpt-oss-120b",
@@ -104,10 +105,9 @@ async def generate_lyrics(
             stream=False,
         )
         lyrics = response.choices[0].message.content or ""
-        return lyrics.strip()
-    except Exception as exc:
-        logger.warning(
-            "Lyrics auto-generation failed (%s); falling back to ACE-Step generation",
-            exc,
-        )
+        lyrics = lyrics.strip()
+        logger.info("Lyrics generated successfully (%d chars)", len(lyrics))
+        return lyrics
+    except Exception:
+        logger.exception("Lyrics auto-generation failed; falling back to ACE-Step")
         return ""

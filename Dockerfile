@@ -1,5 +1,7 @@
 FROM python:3.11-slim
 
+ENV PYTHONUNBUFFERED=1
+
 # Security: Run as non-root user
 RUN useradd -m -u 1000 appuser
 
