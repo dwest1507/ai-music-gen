@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.2](https://github.com/dwest1507/ai-music-gen/compare/ai-music-gen-v0.7.1...ai-music-gen-v0.7.2) (2026-04-05)
+
+
+### Bug Fixes
+
+* lyrics gen ([#51](https://github.com/dwest1507/ai-music-gen/issues/51)) ([09aa21e](https://github.com/dwest1507/ai-music-gen/commit/09aa21e6513444da0d3b3563dbc2db39d2312768))
+
 ## [0.7.1](https://github.com/dwest1507/ai-music-gen/compare/ai-music-gen-v0.7.0...ai-music-gen-v0.7.1) (2026-04-05)
 
 
