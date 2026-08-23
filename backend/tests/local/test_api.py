@@ -22,7 +22,6 @@ async def test_submit_generation(async_client, mock_acestep_client):
 
     payload = {
         "prompt": "An epic orchestral soundtrack",
-        "duration": 60,
         "genre": "Cinematic",
     }
 
@@ -37,8 +36,9 @@ async def test_submit_generation(async_client, mock_acestep_client):
     # Verify the client was called with transformed payload
     call_args = mock_acestep_client.submit_task.call_args[0][0]
     assert "Cinematic" in call_args["prompt"]
-    assert call_args["audio_duration"] == 60
+    assert "audio_duration" not in call_args  # duration omitted when not provided
     assert call_args["thinking"] is True
+    assert call_args["use_format"] is True
     assert call_args["infer_method"] == "ode"
     assert "session_id" in response.cookies
 
@@ -61,6 +61,7 @@ async def test_submit_generation_with_lyrics(async_client, mock_acestep_client):
     call_args = mock_acestep_client.submit_task.call_args[0][0]
     assert call_args["lyrics"] == "Hello world, this is a song"
     assert call_args["audio_format"] == "wav"
+    assert call_args["audio_duration"] == 30  # duration included when explicitly set
 
 
 @pytest.mark.asyncio
@@ -302,24 +303,9 @@ async def test_get_random_example(async_client):
     response = await async_client.get("/api/examples/random")
     assert response.status_code == 200
     data = response.json()
-    assert "is_advanced" in data
     assert "prompt" in data
-
-
-@pytest.mark.asyncio
-async def test_get_random_example_simple(async_client):
-    response = await async_client.get("/api/examples/random?is_advanced=false")
-    assert response.status_code == 200
-    data = response.json()
-    assert data["is_advanced"] is False
-
-
-@pytest.mark.asyncio
-async def test_get_random_example_advanced(async_client):
-    response = await async_client.get("/api/examples/random?is_advanced=true")
-    assert response.status_code == 200
-    data = response.json()
-    assert data["is_advanced"] is True
+    assert "vocal_language" in data
+    assert "is_advanced" not in data
 
 
 # ── Error propagation ────────────────────────────────────────────
@@ -667,8 +653,8 @@ async def test_get_random_example_directory_not_found(async_client, tmp_path):
         "app.api.routes.generation.EXAMPLES_ROOT",
         new=tmp_path / "nonexistent_subdir",
     ):
-        response = await async_client.get("/api/examples/random?is_advanced=false")
-    assert response.status_code == 500
+        response = await async_client.get("/api/examples/random")
+    assert response.status_code == 404
 
 
 @pytest.mark.asyncio
@@ -679,5 +665,5 @@ async def test_get_random_example_no_files(async_client, tmp_path):
     (tmp_path / "text2music").mkdir()
 
     with patch("app.api.routes.generation.EXAMPLES_ROOT", new=tmp_path):
-        response = await async_client.get("/api/examples/random?is_advanced=false")
-    assert response.status_code == 500
+        response = await async_client.get("/api/examples/random")
+    assert response.status_code == 404

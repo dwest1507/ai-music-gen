@@ -85,7 +85,7 @@ The `ACEStepClient` is instantiated once at startup (lifespan), shared across re
 
 - **Tech:** Next.js 16, React 19, TypeScript, Tailwind CSS v4
 - **Entry:** `src/app/page.tsx` — home page, switches between form and job status views
-- **Form:** `src/components/MusicGeneratorForm.tsx` — simple/advanced mode toggle, "Try an Example" button
+- **Form:** `src/components/MusicGeneratorForm.tsx` — unified form (prompt, genre, language, lyrics, instrumental), "Try an Example" button
 - **Job polling:** `src/components/JobStatus.tsx` — polls `/api/jobs/{task_id}`, shows progress and audio
 - **Audio:** `src/components/AudioPlayer.tsx` — wavesurfer.js waveform + playback
 - **API client:** `src/lib/api.ts` — typed fetch wrapper with Zod validation and `ApiError` class

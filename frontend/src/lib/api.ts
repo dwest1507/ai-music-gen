@@ -55,20 +55,10 @@ export async function apiFetch<T>(endpoint: string, options: FetchOptions = {}):
 
 export interface GenerateRequest {
     prompt: string;
-    lyrics?: string;
-    duration?: number;
     genre?: string;
+    lyrics?: string;
     vocal_language?: string;
-    audio_format?: string;
-    thinking?: boolean;
-    use_format?: boolean;
     instrumental?: boolean;
-    bpm?: number;
-    key_scale?: string;
-    time_signature?: string;
-    inference_steps?: number;
-    batch_size?: number;
-    infer_method?: string;
 }
 
 export interface GenerateResponse {
@@ -99,22 +89,13 @@ export interface JobResponse {
 }
 
 export interface ExampleResponse {
-    is_advanced: boolean;
     prompt: string;
     lyrics: string;
     vocal_language: string;
-    bpm?: number;
-    duration: number;
-    key_scale?: string;
-    time_signature?: string;
-    thinking: boolean;
+    genre?: string;
+    instrumental?: boolean;
 }
 
-export async function getRandomExample(isAdvanced?: boolean): Promise<ExampleResponse> {
-    const params = new URLSearchParams();
-    if (isAdvanced !== undefined) {
-        params.append("is_advanced", isAdvanced.toString());
-    }
-    const queryString = params.toString() ? `?${params.toString()}` : "";
-    return apiFetch<ExampleResponse>(`/api/examples/random${queryString}`);
+export async function getRandomExample(): Promise<ExampleResponse> {
+    return apiFetch<ExampleResponse>("/api/examples/random");
 }

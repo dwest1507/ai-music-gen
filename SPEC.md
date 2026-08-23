@@ -123,7 +123,7 @@ Supports optional API key via:
 | FR-9 | User can download generated audio files | Must |
 | FR-10 | User can cancel pending/queued generations | Should |
 | FR-11 | System proxies audio downloads through the backend (not exposing Modal URL) | Must |
-| FR-12 | User can select between Simple Mode (prompt-only) and Advanced Mode (full controls) | Should |
+| FR-12 | Single unified form: only prompt is required; genre, language, lyrics, and instrumental toggle are optional | Should |
 | FR-13 | System provides a "random sample" / "inspire me" feature using `/create_random_sample` | Could |
 | FR-14 | System supports LM-enhanced generation (`thinking=true`) for higher quality output | Should |
 | FR-15 | User can click a button to fill the form with a random example prompt from the curated collection | Should |
@@ -245,12 +245,12 @@ Request body (Pydantic model):
   "prompt": "string (required, max 500 chars)",
   "lyrics": "string (optional, max 5000 chars — only sent when user provides > 5 non-whitespace chars)",
   "instrumental": "bool (optional, default false — forces [Instrumental] lyrics on the backend)",
-  "duration": "float (optional, 10-300, default 60)",
+  "duration": "float (optional, 10-300, default null — LM auto-determines when omitted)",
   "genre": "string (optional)",
   "vocal_language": "string (optional, default 'en')",
   "audio_format": "string (optional, 'mp3'|'wav'|'flac', default 'mp3')",
   "thinking": "bool (optional, default true)",
-  "use_format": "bool (optional, default false)",
+  "use_format": "bool (optional, default true — LM enhances prompt/lyrics before generation)",
   "bpm": "int (optional, 30-300)",
   "key_scale": "string (optional)",
   "time_signature": "string (optional)",
@@ -259,6 +259,8 @@ Request body (Pydantic model):
   "infer_method": "string (optional, 'ode'|'sde', default 'ode')"
 }
 ```
+
+The frontend sends only `prompt`, `genre`, `lyrics`, `vocal_language`, and `instrumental`. All other parameters use quality-optimized backend defaults.
 
 Response (202 Accepted):
 
@@ -277,7 +279,7 @@ The backend transforms this into the ACE-Step `/release_task` payload:
   2. `lyrics` non-empty (user-provided) → use provided lyrics as-is
   3. No lyrics + not instrumental → `lyrics=""` + `sample_mode=True` + `sample_query=prompt`
      (delegates auto-generation to ACE-Step's built-in 5Hz LM)
-- `duration` → `audio_duration`
+- `duration` → `audio_duration` (only included when explicitly provided; omitted to let LM auto-determine)
 - `thinking` → `thinking`
 - Other fields mapped 1:1
 
@@ -336,12 +338,12 @@ frontend/src/
 
 **`api.ts`** — API client mapping to backend API structure. Forms typed requests and parses typed responses.
 
-**`MusicGeneratorForm.tsx`** — Provides:
+**`MusicGeneratorForm.tsx`** — Provides a single unified form:
+- Prompt textarea (required)
+- Genre datalist and vocal language selector
 - Lyrics textarea (only sent when user types > 5 non-whitespace chars; otherwise AI auto-generates)
-- "Instrumental only" checkbox in advanced mode (disables lyrics textarea, sends `instrumental: true`)
-- Vocal language selector
-- "Simple / Advanced" mode toggle
-- Advanced mode mapping: BPM, key/scale, time signature, inference steps
+- "Instrumental only" checkbox (disables lyrics textarea, sends `instrumental: true`)
+- All advanced parameters (audio format, inference steps, diffusion method, etc.) use quality-optimized backend defaults
 
 **`JobStatus.tsx`** — Maps states:
 - Handles polling cycle against backend for task status updates.
