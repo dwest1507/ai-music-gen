@@ -17,3 +17,8 @@ dependencies = [
     "slowapi>=0.1.9",
     "uvicorn>=0.41.0",
 ]
+
+[tool.ruff.lint]
+# Ruff 0.16 expanded its default rule set from 59 to 413 rules; pin to the
+# previous defaults so upgrading ruff doesn't silently change lint results.
+select = ["E4", "E7", "E9", "F"]
