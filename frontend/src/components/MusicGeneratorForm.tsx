@@ -74,9 +74,13 @@ export function MusicGeneratorForm({ onJobCreated }: MusicGeneratorFormProps) {
     const [instrumental, setInstrumental] = useState(false);
 
     const [isLoading, setIsLoading] = useState(false);
+    const [isLoadingExample, setIsLoadingExample] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [lastSubmitTime, setLastSubmitTime] = useState(0);
     const [loadingMessageIndex, setLoadingMessageIndex] = useState(0);
+
+    // Either async action locks the form; only generation swaps the button label.
+    const isBusy = isLoading || isLoadingExample;
 
     useEffect(() => {
         if (!isLoading) return;
@@ -89,21 +93,22 @@ export function MusicGeneratorForm({ onJobCreated }: MusicGeneratorFormProps) {
     }, [isLoading]);
 
     const handleTryExample = async () => {
-        setIsLoading(true);
-        setLoadingMessageIndex(0);
+        setIsLoadingExample(true);
         setError(null);
         try {
             const example = await getRandomExample();
             setPrompt(example.prompt);
             setLyrics(example.lyrics);
             setVocalLanguage(example.vocal_language);
-            setGenre(example.genre || "");
-            setInstrumental(example.instrumental || false);
+            setInstrumental(example.instrumental);
+            // Examples carry no genre — clear any leftover value so the form
+            // matches the example exactly.
+            setGenre("");
         } catch (err: unknown) {
             setError("Failed to fetch example prompt.");
             console.error(err);
         } finally {
-            setIsLoading(false);
+            setIsLoadingExample(false);
         }
     };
 
@@ -175,12 +180,12 @@ export function MusicGeneratorForm({ onJobCreated }: MusicGeneratorFormProps) {
                     variant="outline"
                     size="sm"
                     onClick={handleTryExample}
-                    disabled={isLoading}
+                    disabled={isBusy}
                     className="flex items-center gap-1.5"
                     style={{ borderColor: "#ff00ff40", color: "#ff00ff" }}
                 >
                     <Sparkles className="w-3 h-3" strokeWidth={1.5} />
-                    Try an Example
+                    {isLoadingExample ? "Loading..." : "Try an Example"}
                 </Button>
             </div>
 
@@ -203,7 +208,7 @@ export function MusicGeneratorForm({ onJobCreated }: MusicGeneratorFormProps) {
                             placeholder="E.g., A lo-fi hip hop beat for studying..."
                             value={prompt}
                             onChange={(e) => setPrompt(e.target.value)}
-                            disabled={isLoading}
+                            disabled={isBusy}
                             className="cyber-input flex min-h-[70px] w-full resize-y px-3 py-2 text-sm"
                         />
                     </div>
@@ -219,7 +224,7 @@ export function MusicGeneratorForm({ onJobCreated }: MusicGeneratorFormProps) {
                                 list="genre-options"
                                 value={genre}
                                 onChange={(e) => setGenre(e.target.value)}
-                                disabled={isLoading}
+                                disabled={isBusy}
                                 placeholder="Any"
                                 className="cyber-input flex h-10 w-full px-3 py-2 text-sm"
                             />
@@ -257,7 +262,7 @@ export function MusicGeneratorForm({ onJobCreated }: MusicGeneratorFormProps) {
                                 id="vocalLanguage"
                                 value={vocalLanguage}
                                 onChange={(e) => setVocalLanguage(e.target.value)}
-                                disabled={isLoading}
+                                disabled={isBusy}
                                 className="w-full"
                             >
                                 <option value="bn">Bengali</option>
@@ -287,7 +292,7 @@ export function MusicGeneratorForm({ onJobCreated }: MusicGeneratorFormProps) {
                             placeholder="Leave blank for AI auto-generated lyrics..."
                             value={lyrics}
                             onChange={(e) => setLyrics(e.target.value)}
-                            disabled={isLoading || instrumental}
+                            disabled={isBusy || instrumental}
                             className="cyber-input flex min-h-[80px] w-full resize-y px-3 py-2 text-sm"
                         />
                     </div>
@@ -298,7 +303,7 @@ export function MusicGeneratorForm({ onJobCreated }: MusicGeneratorFormProps) {
                             id="instrumental"
                             checked={instrumental}
                             onChange={(e) => setInstrumental(e.target.checked)}
-                            disabled={isLoading}
+                            disabled={isBusy}
                             className="w-3.5 h-3.5 accent-[#00ff88]"
                         />
                         Instrumental only
@@ -326,7 +331,7 @@ export function MusicGeneratorForm({ onJobCreated }: MusicGeneratorFormProps) {
                     <Button
                         type="submit"
                         className="w-full"
-                        disabled={isLoading}
+                        disabled={isBusy}
                         isLoading={isLoading}
                     >
                         {isLoading ? LOADING_MESSAGES[loadingMessageIndex] : "Generate Music"}

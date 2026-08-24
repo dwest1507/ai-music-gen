@@ -81,6 +81,7 @@ describe('getRandomExample', () => {
             prompt: 'A simple track',
             lyrics: '',
             vocal_language: 'en',
+            instrumental: false,
         };
         (global.fetch as Mock).mockResolvedValue({
             ok: true,

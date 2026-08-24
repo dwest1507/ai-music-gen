@@ -134,7 +134,7 @@ Supports optional API key via:
 |----|-------------|----------|
 | NFR-1 | Backend response time < 500ms for proxied requests (excluding Modal inference) | Must |
 | NFR-2 | Rate limiting: max 5 generation requests per minute per session | Must |
-| NFR-3 | Input validation: prompts max 500 chars, lyrics max 5000 chars | Must |
+| NFR-3 | Input validation: prompts max 1000 chars, lyrics max 5000 chars | Must |
 | NFR-4 | All secrets stored in environment variables, never in code | Must |
 | NFR-5 | CORS limited to frontend domain only | Must |
 | NFR-6 | Session IDs generated cryptographically (UUID4 or `secrets.token_urlsafe`) | Must |
@@ -234,7 +234,13 @@ Takes care of communicating with the model API:
 | `GET /api/models` | GET | `GET /v1/models` | List available models |
 | `POST /api/random-sample` | POST | `POST /create_random_sample` | Get random sample params |
 | `POST /api/format` | POST | `POST /format_input` | LM-format prompt/lyrics |
+| `GET /api/examples/random` | GET | (none — local example files) | Random curated example for the form |
 | `GET /health` | GET | `GET /health` | Health check (local + upstream) |
+
+Every `/api/*` route is rate limited by `slowapi`, keyed on the session cookie with an IP
+fallback: 5/min for `POST /api/generate`, 60/min for job status, 30/min for cancel and
+`GET /api/models`, 20/min for audio downloads, and 10/min for `/api/random-sample`,
+`/api/format`, and `/api/examples/random`.
 
 **Route detail: `POST /api/generate`**
 
@@ -242,7 +248,7 @@ Request body (Pydantic model):
 
 ```json
 {
-  "prompt": "string (required, max 500 chars)",
+  "prompt": "string (required, max 1000 chars)",
   "lyrics": "string (optional, max 5000 chars — only sent when user provides > 5 non-whitespace chars)",
   "instrumental": "bool (optional, default false — forces [Instrumental] lyrics on the backend)",
   "duration": "float (optional, 10-300, default null — LM auto-determines when omitted)",
@@ -277,11 +283,29 @@ The backend transforms this into the ACE-Step `/release_task` payload:
 - `lyrics` / `instrumental` → `lyrics` (resolution order):
   1. `instrumental=true` → `"[Instrumental]"` (no vocals)
   2. `lyrics` non-empty (user-provided) → use provided lyrics as-is
-  3. No lyrics + not instrumental → `lyrics=""` + `sample_mode=True` + `sample_query=prompt`
-     (delegates auto-generation to ACE-Step's built-in 5Hz LM)
+  3. No lyrics + not instrumental → `lyrics=""` + `sample_mode=True` +
+     `sample_query="{genre-prefixed prompt} (lyrics in {language name})"`
+     (delegates auto-generation to ACE-Step's built-in 5Hz LM; the language name
+     is spelled out because the upstream server treats `"en"` as "no preference")
 - `duration` → `audio_duration` (only included when explicitly provided; omitted to let LM auto-determine)
 - `thinking` → `thinking`
 - Other fields mapped 1:1
+
+**Route detail: `GET /api/examples/random`**
+
+Picks one file uniformly at random across both `backend/examples/simple_mode/` and
+`backend/examples/text2music/`, and maps it onto the fields the unified form uses:
+
+```json
+{
+  "prompt": "string",
+  "lyrics": "string (empty for simple_mode examples)",
+  "vocal_language": "string (a code the form's selector offers; anything else → 'en')",
+  "instrumental": "bool"
+}
+```
+
+Returns 404 when no example files are present, 500 when a file cannot be read or parsed.
 
 **Route detail: `GET /api/jobs/{task_id}`**
 

@@ -250,14 +250,12 @@ describe('MusicGeneratorForm', () => {
     });
 
     it('populates form when "Try an Example" is clicked', async () => {
-        const exampleData = {
+        mockGetRandomExample.mockResolvedValueOnce({
             prompt: 'Example Prompt',
             lyrics: 'Example Lyrics',
             vocal_language: 'ja',
-            genre: 'Jazz',
             instrumental: false,
-        };
-        mockGetRandomExample.mockResolvedValueOnce(exampleData);
+        });
 
         render(<MusicGeneratorForm onJobCreated={mockOnJobCreated} />);
 
@@ -267,7 +265,56 @@ describe('MusicGeneratorForm', () => {
             expect(mockGetRandomExample).toHaveBeenCalled();
             expect(screen.getByDisplayValue('Example Prompt')).toBeInTheDocument();
             expect(screen.getByDisplayValue('Example Lyrics')).toBeInTheDocument();
-            expect(screen.getByDisplayValue('Jazz')).toBeInTheDocument();
+            expect(screen.getByLabelText(/Language/i)).toHaveValue('ja');
+        });
+    });
+
+    it('clears a stale genre and applies the instrumental flag from an example', async () => {
+        mockGetRandomExample.mockResolvedValueOnce({
+            prompt: 'An instrumental example',
+            lyrics: '',
+            vocal_language: 'en',
+            instrumental: true,
+        });
+
+        render(<MusicGeneratorForm onJobCreated={mockOnJobCreated} />);
+
+        const genreInput = screen.getByLabelText(/^Genre/i);
+        fireEvent.change(genreInput, { target: { value: 'Metal' } });
+        expect(genreInput).toHaveValue('Metal');
+
+        fireEvent.click(screen.getByRole('button', { name: /Try an Example/i }));
+
+        await waitFor(() => {
+            expect(genreInput).toHaveValue('');
+            expect(screen.getByRole('checkbox', { name: /Instrumental only/i })).toBeChecked();
+        });
+    });
+
+    it('shows example loading state without the generation loading message', async () => {
+        let resolveExample: (value: {
+            prompt: string; lyrics: string; vocal_language: string; instrumental: boolean;
+        }) => void = () => { };
+        mockGetRandomExample.mockReturnValueOnce(
+            new Promise((resolve) => { resolveExample = resolve; })
+        );
+
+        render(<MusicGeneratorForm onJobCreated={mockOnJobCreated} />);
+
+        fireEvent.click(screen.getByRole('button', { name: /Try an Example/i }));
+
+        // The submit button stays labelled "Generate Music" — the generation
+        // loading messages belong to generation only — but is locked meanwhile.
+        const submitButton = screen.getByRole('button', { name: /Generate Music/i });
+        expect(submitButton).toBeDisabled();
+        expect(screen.queryByText(/Starting Generation/i)).not.toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /Loading/i })).toBeInTheDocument();
+
+        resolveExample({ prompt: 'Done', lyrics: '', vocal_language: 'en', instrumental: false });
+
+        await waitFor(() => {
+            expect(screen.getByRole('button', { name: /Try an Example/i })).not.toBeDisabled();
+            expect(screen.getByRole('button', { name: /Generate Music/i })).not.toBeDisabled();
         });
     });
 });

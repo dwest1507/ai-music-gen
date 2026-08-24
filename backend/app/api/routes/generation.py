@@ -100,7 +100,6 @@ class ExampleResponse(BaseModel):
     prompt: str
     lyrics: str = ""
     vocal_language: str = "en"
-    genre: Optional[str] = None
     instrumental: bool = False
 
 
@@ -125,6 +124,13 @@ def get_session_id(request: Request, response: Response) -> str:
             samesite="lax",
         )
     return session_id
+
+
+def _normalize_language(value: Optional[str]) -> str:
+    """Map an example's language field onto a code the form's selector offers."""
+    if not value or value not in _VOCAL_LANGUAGE_NAMES:
+        return "en"
+    return value
 
 
 def _build_release_task_payload(gen_request: GenerationRequest) -> dict:
@@ -161,7 +167,7 @@ def _build_release_task_payload(gen_request: GenerationRequest) -> dict:
     if not gen_request.instrumental and not gen_request.lyrics:
         payload["sample_mode"] = True
         lang_name = _VOCAL_LANGUAGE_NAMES.get(gen_request.vocal_language, "English")
-        payload["sample_query"] = f"{gen_request.prompt} (lyrics in {lang_name})"
+        payload["sample_query"] = f"{prompt} (lyrics in {lang_name})"
 
     if gen_request.bpm is not None:
         payload["bpm"] = gen_request.bpm
@@ -419,46 +425,39 @@ async def cancel_job(task_id: str, request: Request, response: Response):
 
 
 @router.get("/examples/random", response_model=ExampleResponse)
-async def get_random_example():
+@limiter.limit("10/minute")
+async def get_random_example(request: Request, response: Response):
     """Pick a random example from the curated collection and map its fields."""
     try:
-        # Collect examples from both directories
-        all_files: list[tuple[str, Path]] = []
-        for mode, dirname in [("simple", "simple_mode"), ("text2music", "text2music")]:
-            subdir = EXAMPLES_ROOT / dirname
-            if subdir.exists():
-                for f in subdir.glob("*.json"):
-                    all_files.append((mode, f))
+        # Draw from both collections so every example is reachable, regardless
+        # of which one it came from — the UI no longer has separate modes.
+        all_files = [
+            (dirname, f)
+            for dirname in ("simple_mode", "text2music")
+            if (EXAMPLES_ROOT / dirname).exists()
+            for f in (EXAMPLES_ROOT / dirname).glob("*.json")
+        ]
 
         if not all_files:
             raise HTTPException(status_code=404, detail="No example files found")
 
-        mode, random_file = random.choice(all_files)
+        dirname, random_file = random.choice(all_files)
         with open(random_file, "r") as f:
             data = json.load(f)
 
-        if mode == "simple":
-            vocal_lang = data.get("vocal_language", "en")
-            if vocal_lang == "unknown":
-                vocal_lang = "en"
-            is_instrumental = bool(data.get("instrumental"))
-
+        if dirname == "simple_mode":
             return ExampleResponse(
                 prompt=data.get("description", ""),
-                vocal_language=vocal_lang,
-                lyrics="" if is_instrumental else "",
-                instrumental=is_instrumental,
+                lyrics="",
+                vocal_language=_normalize_language(data.get("vocal_language")),
+                instrumental=bool(data.get("instrumental")),
             )
-        else:
-            vocal_lang = data.get("language", "en")
-            if vocal_lang == "unknown":
-                vocal_lang = "en"
 
-            return ExampleResponse(
-                prompt=data.get("caption", ""),
-                lyrics=data.get("lyrics", ""),
-                vocal_language=vocal_lang,
-            )
+        return ExampleResponse(
+            prompt=data.get("caption", ""),
+            lyrics=data.get("lyrics", ""),
+            vocal_language=_normalize_language(data.get("language")),
+        )
 
     except HTTPException:
         raise

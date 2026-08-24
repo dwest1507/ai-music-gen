@@ -39,7 +39,7 @@ npm run test
 ```
 
 ### Test Coverage Focus
-- **`MusicGeneratorForm.tsx`:** Verify conditional rendering between Simple and Advanced modes, validation of inputs (e.g., BPM bounds), and submission transitions.
+- **`MusicGeneratorForm.tsx`:** Verify the unified form renders every field, validates the prompt, sends only the fields the user filled in, and transitions correctly on submit. Cover the "Try an Example" flow separately from generation — the two have independent loading states.
 - **`JobStatus.tsx`:** Use mocked API responses to fast-forward through `queued -> processing -> completed` states.
 - **`AudioPlayer.tsx`:** Verify playback controls, metadata display, and download proxy behaviors trigger correctly.
 

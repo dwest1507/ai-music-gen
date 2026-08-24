@@ -8,8 +8,23 @@ sys.path.insert(
     0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 )
 
+import pytest
 import pytest_asyncio
+from app.core.limiter import limiter
 from app.services.acestep_client import ACEStepClient
+
+
+@pytest.fixture(autouse=True)
+def reset_rate_limiter():
+    """Clear rate-limit counters between tests.
+
+    The limiter keys on the session cookie and falls back to the client IP, so
+    without this every test that omits a cookie shares one budget and the
+    suite's behaviour depends on test ordering.
+    """
+    limiter.reset()
+    yield
+    limiter.reset()
 
 
 @pytest_asyncio.fixture

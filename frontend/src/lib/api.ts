@@ -92,8 +92,7 @@ export interface ExampleResponse {
     prompt: string;
     lyrics: string;
     vocal_language: string;
-    genre?: string;
-    instrumental?: boolean;
+    instrumental: boolean;
 }
 
 export async function getRandomExample(): Promise<ExampleResponse> {
