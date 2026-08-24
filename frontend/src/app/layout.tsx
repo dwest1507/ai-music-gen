@@ -1,16 +1,14 @@
 import type { Metadata } from "next";
-import { Orbitron, JetBrains_Mono } from "next/font/google";
+import { Inter } from "next/font/google";
 import "./globals.css";
 import { NavBar } from "@/components/NavBar";
+import { AmbientBackground } from "@/components/layout/AmbientBackground";
+import { Footer } from "@/components/layout/Footer";
 
-const orbitron = Orbitron({
-  variable: "--font-orbitron",
+const inter = Inter({
+  variable: "--font-inter",
   subsets: ["latin"],
-});
-
-const jetbrainsMono = JetBrains_Mono({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
+  display: "swap",
 });
 
 export const metadata: Metadata = {
@@ -28,12 +26,12 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <body
-        className={`${orbitron.variable} ${jetbrainsMono.variable} antialiased`}
-      >
+    <html lang="en" className={inter.variable}>
+      <body className="flex min-h-screen flex-col antialiased">
+        <AmbientBackground />
         <NavBar />
-        {children}
+        <main className="relative z-10 flex-1">{children}</main>
+        <Footer />
       </body>
     </html>
   );

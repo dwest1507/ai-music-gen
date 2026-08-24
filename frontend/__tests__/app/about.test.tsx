@@ -124,9 +124,8 @@ describe('About page', () => {
         expect(screen.getByText('Release Please')).toBeDefined();
     });
 
-    it('renders developer footer', () => {
+    it('renders the hero intro copy', () => {
         render(<About />);
-        expect(screen.getByText(/developed by/i)).toBeDefined();
-        expect(screen.getByRole('link', { name: /david west/i })).toBeDefined();
+        expect(screen.getByText(/full-stack ai engineering/i)).toBeDefined();
     });
 });

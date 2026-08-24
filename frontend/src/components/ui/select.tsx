@@ -10,7 +10,7 @@ const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
             <div className="relative">
                 <select
                     className={cn(
-                        "cyber-input flex h-10 w-full appearance-none px-3 py-2 text-sm pr-8 cursor-pointer",
+                        "field-input flex h-10 w-full cursor-pointer appearance-none px-3 py-2 pr-8 text-[13px]",
                         className
                     )}
                     ref={ref}
@@ -18,7 +18,7 @@ const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
                 >
                     {children}
                 </select>
-                <div className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">
+                <div className="pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 text-muted-foreground">
                     <ChevronDown className="h-3.5 w-3.5" strokeWidth={1.5} />
                 </div>
             </div>

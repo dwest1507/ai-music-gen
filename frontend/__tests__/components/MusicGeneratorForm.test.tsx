@@ -36,6 +36,7 @@ vi.mock('@/components/ui/card', () => ({
 
 // Mock icons — include all icons used by the component
 vi.mock('lucide-react', () => ({
+    AlertCircle: () => <svg data-testid="alert-icon" />,
     Music: () => <svg data-testid="music-icon" />,
     Sparkles: () => <svg data-testid="sparkles-icon" />,
     HelpCircle: () => <svg data-testid="help-icon" />,

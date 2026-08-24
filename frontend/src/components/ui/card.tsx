@@ -5,18 +5,13 @@ import { cn } from "@/lib/utils";
 const Card = React.forwardRef<
     HTMLDivElement,
     React.HTMLAttributes<HTMLDivElement>
->(({ className, style, ...props }, ref) => (
+>(({ className, ...props }, ref) => (
     <div
         ref={ref}
         className={cn(
-            "border bg-card text-card-foreground transition-all duration-300",
+            "surface-card relative overflow-hidden rounded-2xl border border-white/[0.09] text-card-foreground transition-all duration-300",
             className
         )}
-        style={{
-            borderColor: "#2a2a3a",
-            boxShadow: "0 0 0 0 transparent, inset 0 1px 0 rgba(0,255,136,0.05)",
-            ...style,
-        }}
         {...props}
     />
 ));
@@ -41,7 +36,7 @@ const CardTitle = React.forwardRef<
     <h3
         ref={ref}
         className={cn(
-            "text-base font-semibold leading-none tracking-[0.1em] uppercase",
+            "text-base leading-none font-medium tracking-tight text-[#ededef]",
             className
         )}
         {...props}
@@ -55,7 +50,7 @@ const CardDescription = React.forwardRef<
 >(({ className, ...props }, ref) => (
     <p
         ref={ref}
-        className={cn("text-sm text-muted-foreground leading-relaxed", className)}
+        className={cn("text-sm leading-relaxed text-muted-foreground", className)}
         {...props}
     />
 ));
