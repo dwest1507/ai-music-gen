@@ -106,10 +106,7 @@ export function MusicGeneratorForm({ onJobCreated }: MusicGeneratorFormProps) {
     const [loadingMessageIndex, setLoadingMessageIndex] = useState(0);
 
     useEffect(() => {
-        if (!isLoading) {
-            setLoadingMessageIndex(0);
-            return;
-        }
+        if (!isLoading) return;
         const interval = setInterval(() => {
             setLoadingMessageIndex(prev =>
                 prev < LOADING_MESSAGES.length - 1 ? prev + 1 : prev
@@ -120,6 +117,7 @@ export function MusicGeneratorForm({ onJobCreated }: MusicGeneratorFormProps) {
 
     const handleTryExample = async () => {
         setIsLoading(true);
+        setLoadingMessageIndex(0);
         setError(null);
         try {
             const example = await getRandomExample(isAdvanced);
@@ -153,6 +151,7 @@ export function MusicGeneratorForm({ onJobCreated }: MusicGeneratorFormProps) {
         }
 
         setIsLoading(true);
+        setLoadingMessageIndex(0);
         setError(null);
         setLastSubmitTime(now);
 
