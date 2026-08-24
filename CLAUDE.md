@@ -88,7 +88,9 @@ The `ACEStepClient` is instantiated once at startup (lifespan), shared across re
 - **Form:** `src/components/MusicGeneratorForm.tsx` — simple/advanced mode toggle, "Try an Example" button
 - **Job polling:** `src/components/JobStatus.tsx` — polls `/api/jobs/{task_id}`, shows progress and audio
 - **Audio:** `src/components/AudioPlayer.tsx` — wavesurfer.js waveform + playback
+- **Layout:** `src/components/NavBar.tsx`, `src/components/layout/` — sticky header, ambient background layer, global footer
 - **API client:** `src/lib/api.ts` — typed fetch wrapper with Zod validation and `ApiError` class
+- **Design system:** tokens live in `src/app/globals.css` and mirror the davidwest.dev portfolio (near-black surfaces, `#0ea5e9` accent, Inter, mono micro-labels). Consume semantic tokens (`text-primary`, `text-muted-foreground`, `.field-input`, `.surface-card`) instead of hard-coded hex. See SPEC.md §5.3.3.
 
 ### Versioning
 

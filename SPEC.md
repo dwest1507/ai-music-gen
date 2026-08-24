@@ -143,6 +143,8 @@ Supports optional API key via:
 | NFR-9 | Graceful degradation when ACE-Step API is unavailable | Should |
 | NFR-10 | HTTPS enforced on all production endpoints | Must |
 | NFR-11 | 100% test coverage required; all new features must include corresponding tests | Must |
+| NFR-12 | Frontend uses the same visual design system as the davidwest.dev portfolio, so the two properties read as one product family | Should |
+| NFR-13 | UI is responsive from 360px upward and honours `prefers-reduced-motion` | Should |
 
 ### 4.3 Security Requirements
 
@@ -324,7 +326,10 @@ frontend/src/
 │   ├── MusicGeneratorForm.tsx     # Generation form
 │   ├── AudioPlayer.tsx            # Audio player
 │   ├── JobStatus.tsx              # Status display
-│   ├── NavBar.tsx                 # Top navigation bar (Generator / About)
+│   ├── NavBar.tsx                 # Sticky top navigation bar (Generator / About)
+│   ├── layout/
+│   │   ├── AmbientBackground.tsx  # Fixed decorative gradient/blob layer
+│   │   └── Footer.tsx             # Global site footer
 │   └── ui/                       # Shared UI primitives
 ├── lib/
 │   ├── api.ts                     # API client
@@ -353,13 +358,46 @@ frontend/src/
 - Handles multi-track downloads when `batch_size > 1`.
 
 **`NavBar.tsx`** — Client component providing persistent top navigation:
+- Sticky, translucent header with a backdrop blur over the ambient background.
 - Brand link (home) and links to Generator (`/`) and About (`/about`).
-- Active link is highlighted using `usePathname`.
+- Active link is highlighted using `usePathname` (`text-primary` + `font-semibold`, `aria-current="page"`).
+- "Get in Touch" mail CTA, hidden below the `sm` breakpoint.
+
+**`layout/AmbientBackground.tsx`** — Fixed, `aria-hidden`, pointer-events-none atmosphere layer: a base radial gradient plus four blurred colour pools that drift via the `float` / `float-slow` keyframes. Rendered once in the root layout, behind all page content.
+
+**`layout/Footer.tsx`** — Global footer rendered by the root layout: copyright plus Email / GitHub / LinkedIn links.
 
 **`about/page.tsx`** — Static server component presenting the project as a portfolio piece:
 - System architecture diagram (Browser → Next.js → FastAPI → Modal GPU).
 - Tech stack cards for each layer: AI Inference, Backend API, Frontend, CI/CD & DevOps.
 - Links to the GitHub repositories.
+
+#### 5.3.3 Design System
+
+The frontend shares its visual language with the davidwest.dev portfolio so both properties read as one product family. All tokens live in `frontend/src/app/globals.css` and are exposed to Tailwind v4 through `@theme inline`; components consume the semantic token names (`bg-background`, `text-primary`, `text-muted-foreground`, …) rather than hard-coded hex values wherever practical.
+
+**Palette** — a near-black "Linear" dark theme with a single sky-blue accent:
+
+| Token | Value | Use |
+|---|---|---|
+| `--background` | `#050506` | Page background |
+| `--background-deep` | `#020203` | Footer / recessed surfaces |
+| `--background-elevated` / `--card` | `#0a0a0c` | Card and popover base |
+| `--foreground` | `#ededef` | Primary text |
+| `--muted-foreground` | `#8a8f98` | Secondary text and micro-labels |
+| `--primary` / `--primary-bright` | `#0ea5e9` / `#38bdf8` | Accent, focus ring, active nav, progress |
+| `--primary-foreground` | `#082f49` | Text on primary fills |
+| `--accent-secondary` / `--accent-tertiary` / `--accent-quaternary` | `#7c3aed` / `#38bdf8` / `#db2777` | Per-card accents on the About page |
+| `--destructive` | `#f43f5e` | Errors and failed jobs |
+| `--border` / `--border-strong` | `rgba(255,255,255,0.06)` / `rgba(255,255,255,0.10)` | Hairline borders |
+
+**Typography** — Inter (`next/font`, `--font-inter`) for all body and heading copy; the platform monospace stack is used only for micro-labels: 10–11px, `tracking-widest`, muted. Headings are sentence case with tight tracking; the hero headline uses the `.headline-gradient` white-to-translucent gradient fill.
+
+**Surfaces** — cards are `rounded-2xl`, `border-white/[0.06]`, with a top-down white translucent gradient (`.surface-card`) and layered shadows (`--shadow-card`, `--shadow-card-hover`). `.surface-elevated` adds a faint accent glow. Depth comes from the fixed `AmbientBackground` layer plus a 64px grid overlay painted by `body::before`.
+
+**Controls** — buttons are `rounded-lg` with variants driven by a `data-variant` attribute (`default`, `secondary`, `outline`, `ghost`, `destructive`, `link`) defined in `globals.css`; inputs, selects, textareas and range sliders share the `.field-input` class (translucent fill, hairline border, sky focus ring). Badges are pill-shaped mono chips.
+
+**Motion & accessibility** — `float` / `float-slow` drive the ambient blobs, `slide-down` and `blink` are available for transient UI; a global `prefers-reduced-motion` block reduces all animation and transition durations to ~0. Focus is always visible via a global `:focus-visible` outline plus accent halo.
 
 ### 5.4 CI/CD Architecture
 

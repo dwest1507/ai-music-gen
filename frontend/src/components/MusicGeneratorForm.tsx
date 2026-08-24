@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { HelpCircle, Music, Settings2, SlidersHorizontal, Sparkles } from "lucide-react";
+import { AlertCircle, HelpCircle, Music, Settings2, SlidersHorizontal, Sparkles } from "lucide-react";
 import { z } from "zod";
 
 const LOADING_MESSAGES = [
@@ -53,8 +53,7 @@ function FieldTooltip({ text }: { text: string }) {
     return (
         <span className="relative group inline-flex items-center ml-1.5 align-middle">
             <HelpCircle className="w-3 h-3 text-muted-foreground cursor-help" strokeWidth={1.5} />
-            <span className="pointer-events-none absolute left-1/2 -translate-x-1/2 bottom-full mb-2 hidden group-hover:block z-50 w-60 bg-[#12121a] text-[#e0e0e0] text-xs px-3 py-2 leading-relaxed"
-                style={{ border: "1px solid #2a2a3a", boxShadow: "0 0 10px rgba(0,0,0,0.8)" }}
+            <span className="pointer-events-none absolute left-1/2 -translate-x-1/2 bottom-full mb-2 hidden group-hover:block z-50 w-60 rounded-lg border border-white/[0.08] bg-[#0a0a0c] text-[#ededef] text-xs px-3 py-2 leading-relaxed shadow-[0_8px_32px_rgba(0,0,0,0.6)]"
             >
                 {text}
             </span>
@@ -66,7 +65,7 @@ function Label({ children, htmlFor }: { children: React.ReactNode; htmlFor?: str
     return (
         <label
             htmlFor={htmlFor}
-            className="text-[10px] font-medium uppercase tracking-[0.12em] text-muted-foreground flex items-center"
+            className="flex items-center font-mono text-[10px] tracking-widest text-muted-foreground"
         >
             {children}
         </label>
@@ -202,19 +201,14 @@ export function MusicGeneratorForm({ onJobCreated }: MusicGeneratorFormProps) {
 
     return (
         <Card className="w-full max-w-2xl mx-auto">
-            {/* Terminal header bar */}
-            <div
-                className="flex items-center justify-between px-4 py-2 border-b"
-                style={{ borderColor: "#2a2a3a", background: "#0a0a0f" }}
-            >
-                <div className="flex items-center gap-1.5">
-                    <span className="w-2.5 h-2.5 rounded-full bg-[#ff3366]" style={{ boxShadow: "0 0 4px #ff3366" }} />
-                    <span className="w-2.5 h-2.5 rounded-full bg-[#ffd700]" style={{ boxShadow: "0 0 4px #ffd700" }} />
-                    <span className="w-2.5 h-2.5 rounded-full bg-[#00ff88]" style={{ boxShadow: "0 0 4px #00ff88" }} />
-                </div>
-                <span className="text-[10px] uppercase tracking-[0.15em] text-muted-foreground">
-                    music-gen.exe
-                </span>
+            <CardHeader className="gap-4 border-b border-white/[0.06] p-5 sm:flex-row sm:items-center sm:justify-between sm:space-y-0">
+                <CardTitle className="flex items-center gap-2.5 text-sm">
+                    <span className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/[0.08] bg-white/[0.05]">
+                        <Music className="h-4 w-4 text-primary" strokeWidth={1.5} />
+                    </span>
+                    Create Music
+                </CardTitle>
+
                 <div className="flex gap-2">
                     <Button
                         type="button"
@@ -223,7 +217,6 @@ export function MusicGeneratorForm({ onJobCreated }: MusicGeneratorFormProps) {
                         onClick={handleTryExample}
                         disabled={isLoading}
                         className="flex items-center gap-1.5"
-                        style={{ borderColor: "#ff00ff40", color: "#ff00ff" }}
                     >
                         <Sparkles className="w-3 h-3" strokeWidth={1.5} />
                         Try an Example
@@ -239,16 +232,9 @@ export function MusicGeneratorForm({ onJobCreated }: MusicGeneratorFormProps) {
                         {isAdvanced ? "Simple Mode" : "Advanced"}
                     </Button>
                 </div>
-            </div>
-
-            <CardHeader className="pb-2 pt-5">
-                <CardTitle className="flex items-center gap-2 text-sm" style={{ color: "#00ff88" }}>
-                    <Music className="w-4 h-4" strokeWidth={1.5} style={{ filter: "drop-shadow(0 0 4px #00ff88)" }} />
-                    Create Music
-                </CardTitle>
             </CardHeader>
 
-            <CardContent>
+            <CardContent className="pt-6">
                 <form onSubmit={handleSubmit} className="space-y-5">
                     <div className="space-y-2">
                         <Label htmlFor="prompt">
@@ -261,11 +247,11 @@ export function MusicGeneratorForm({ onJobCreated }: MusicGeneratorFormProps) {
                             value={prompt}
                             onChange={(e) => setPrompt(e.target.value)}
                             disabled={isLoading}
-                            className="cyber-input flex min-h-[70px] w-full resize-y px-3 py-2 text-sm"
+                            className="field-input flex min-h-[70px] w-full resize-y px-3 py-2 text-[13px]"
                         />
                     </div>
 
-                    <div className="grid grid-cols-3 gap-4">
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                         <div className="space-y-2">
                             <Label>
                                 Duration <span className="text-destructive ml-0.5">*</span>
@@ -284,7 +270,7 @@ export function MusicGeneratorForm({ onJobCreated }: MusicGeneratorFormProps) {
                                     className="text-center"
                                     aria-label="Minutes"
                                 />
-                                <span className="text-[10px] font-medium text-muted-foreground shrink-0 uppercase tracking-wider">m</span>
+                                <span className="shrink-0 font-mono text-[10px] tracking-widest text-muted-foreground">m</span>
                                 <Input
                                     id="durationSecs"
                                     type="number"
@@ -297,7 +283,7 @@ export function MusicGeneratorForm({ onJobCreated }: MusicGeneratorFormProps) {
                                     className="text-center"
                                     aria-label="Seconds"
                                 />
-                                <span className="text-[10px] font-medium text-muted-foreground shrink-0 uppercase tracking-wider">s</span>
+                                <span className="shrink-0 font-mono text-[10px] tracking-widest text-muted-foreground">s</span>
                             </div>
                         </div>
 
@@ -313,7 +299,7 @@ export function MusicGeneratorForm({ onJobCreated }: MusicGeneratorFormProps) {
                                 onChange={(e) => setGenre(e.target.value)}
                                 disabled={isLoading}
                                 placeholder="Any"
-                                className="cyber-input flex h-10 w-full px-3 py-2 text-sm"
+                                className="field-input flex h-10 w-full px-3 py-2 text-[13px]"
                             />
                             <datalist id="genre-options">
                                 <option value="Afrobeat" />
@@ -370,12 +356,8 @@ export function MusicGeneratorForm({ onJobCreated }: MusicGeneratorFormProps) {
                     </div>
 
                     {isAdvanced && (
-                        <div className="space-y-4 pt-4 border-t mt-4 animate-in fade-in slide-in-from-top-2"
-                            style={{ borderColor: "#2a2a3a" }}
-                        >
-                            <h3 className="text-[10px] font-semibold uppercase tracking-[0.15em] flex items-center gap-2"
-                                style={{ color: "#00d4ff" }}
-                            >
+                        <div className="mt-4 space-y-4 border-t border-white/[0.06] pt-4 animate-in fade-in slide-in-from-top-2">
+                            <h3 className="flex items-center gap-2 font-mono text-[10px] tracking-widest text-primary-bright">
                                 <SlidersHorizontal className="w-3.5 h-3.5" strokeWidth={1.5} />
                                 Advanced Controls
                             </h3>
@@ -391,11 +373,11 @@ export function MusicGeneratorForm({ onJobCreated }: MusicGeneratorFormProps) {
                                     value={lyrics}
                                     onChange={(e) => setLyrics(e.target.value)}
                                     disabled={isLoading || instrumental}
-                                    className="cyber-input flex min-h-[80px] w-full resize-y px-3 py-2 text-sm"
+                                    className="field-input flex min-h-[80px] w-full resize-y px-3 py-2 text-[13px]"
                                 />
                             </div>
 
-                            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3">
                                 <div className="space-y-2">
                                     <Label htmlFor="bpm">
                                         BPM / Tempo
@@ -442,7 +424,7 @@ export function MusicGeneratorForm({ onJobCreated }: MusicGeneratorFormProps) {
                                 </div>
                             </div>
 
-                            <div className="grid grid-cols-2 gap-4">
+                            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                                 <div className="space-y-2">
                                     <Label htmlFor="audioFormat">
                                         Audio Format
@@ -478,7 +460,7 @@ export function MusicGeneratorForm({ onJobCreated }: MusicGeneratorFormProps) {
                                 </div>
                             </div>
 
-                            <div className="grid grid-cols-2 gap-4">
+                            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                                 <div className="space-y-2">
                                     <Label htmlFor="inferenceSteps">
                                         Inference Steps ({inferenceSteps})
@@ -492,7 +474,7 @@ export function MusicGeneratorForm({ onJobCreated }: MusicGeneratorFormProps) {
                                         value={inferenceSteps}
                                         onChange={(e) => setInferenceSteps(e.target.value)}
                                         disabled={isLoading}
-                                        className="p-0 border-none shadow-none h-8"
+                                        className="h-8"
                                     />
                                 </div>
                                 <div className="space-y-2">
@@ -508,42 +490,42 @@ export function MusicGeneratorForm({ onJobCreated }: MusicGeneratorFormProps) {
                                         value={batchSize}
                                         onChange={(e) => setBatchSize(e.target.value)}
                                         disabled={isLoading}
-                                        className="p-0 border-none shadow-none h-8"
+                                        className="h-8"
                                     />
                                 </div>
                             </div>
 
                             <div className="flex flex-wrap gap-5 pt-2">
-                                <label className="flex items-center gap-2 text-[10px] font-medium uppercase tracking-[0.12em] text-muted-foreground cursor-pointer">
+                                <label className="flex cursor-pointer items-center gap-2 font-mono text-[10px] tracking-widest text-muted-foreground">
                                     <input
                                         type="checkbox"
                                         checked={thinking}
                                         onChange={(e) => setThinking(e.target.checked)}
                                         disabled={isLoading}
-                                        className="w-3.5 h-3.5 accent-[#00ff88]"
+                                        className="h-3.5 w-3.5 accent-[#0ea5e9]"
                                     />
                                     Use LM Thinking
                                     <FieldTooltip text="Enables AI chain-of-thought reasoning to automatically detect and refine metadata like BPM, key, and duration. Recommended for best results." />
                                 </label>
-                                <label className="flex items-center gap-2 text-[10px] font-medium uppercase tracking-[0.12em] text-muted-foreground cursor-pointer">
+                                <label className="flex cursor-pointer items-center gap-2 font-mono text-[10px] tracking-widest text-muted-foreground">
                                     <input
                                         type="checkbox"
                                         checked={useFormat}
                                         onChange={(e) => setUseFormat(e.target.checked)}
                                         disabled={isLoading}
-                                        className="w-3.5 h-3.5 accent-[#00ff88]"
+                                        className="h-3.5 w-3.5 accent-[#0ea5e9]"
                                     />
                                     LM Format Prompt/Lyrics
                                     <FieldTooltip text="Uses the AI to enhance and structure your prompt and lyrics before generation. Useful when your input is short or informal." />
                                 </label>
-                                <label className="flex items-center gap-2 text-[10px] font-medium uppercase tracking-[0.12em] text-muted-foreground cursor-pointer">
+                                <label className="flex cursor-pointer items-center gap-2 font-mono text-[10px] tracking-widest text-muted-foreground">
                                     <input
                                         type="checkbox"
                                         id="instrumental"
                                         checked={instrumental}
                                         onChange={(e) => setInstrumental(e.target.checked)}
                                         disabled={isLoading}
-                                        className="w-3.5 h-3.5 accent-[#00ff88]"
+                                        className="h-3.5 w-3.5 accent-[#0ea5e9]"
                                     />
                                     Instrumental only
                                     <FieldTooltip text="Generate music without any vocals. Disables AI lyrics generation and ignores any lyrics input." />
@@ -552,26 +534,23 @@ export function MusicGeneratorForm({ onJobCreated }: MusicGeneratorFormProps) {
                         </div>
                     )}
 
-                    <p className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
+                    <p className="font-mono text-[10px] tracking-widest text-muted-foreground">
                         <span className="text-destructive">*</span> Required
                     </p>
 
                     {error && (
                         <div
-                            className="text-xs uppercase tracking-[0.08em] p-3 flex items-start gap-2"
-                            style={{
-                                color: "#ff3366",
-                                background: "rgba(255,51,102,0.08)",
-                                border: "1px solid rgba(255,51,102,0.3)",
-                            }}
+                            role="alert"
+                            className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/[0.08] p-3 text-[13px] text-destructive"
                         >
-                            <span className="shrink-0">›</span>
+                            <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" strokeWidth={1.5} />
                             {error}
                         </div>
                     )}
 
                     <Button
                         type="submit"
+                        size="lg"
                         className="w-full"
                         disabled={isLoading}
                         isLoading={isLoading}

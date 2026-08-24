@@ -26,9 +26,9 @@ export function AudioPlayer({ audioUrl, className }: AudioPlayerProps) {
 
         wavesurferRef.current = WaveSurfer.create({
             container: containerRef.current,
-            waveColor: "#2a2a3a",
-            progressColor: "#00ff88",
-            cursorColor: "#00ff88",
+            waveColor: "rgba(255,255,255,0.14)",
+            progressColor: "#0ea5e9",
+            cursorColor: "#38bdf8",
             barWidth: 2,
             barGap: 3,
             height: 56,
@@ -94,12 +94,14 @@ export function AudioPlayer({ audioUrl, className }: AudioPlayerProps) {
 
     return (
         <div
-            className={cn("w-full p-4 border", className)}
+            className={cn(
+                "w-full rounded-xl border border-white/[0.06] bg-white/[0.03] p-4 backdrop-blur-xl transition-shadow duration-300",
+                className
+            )}
             style={{
-                background: "#0a0a0f",
-                borderColor: "#2a2a3a",
-                boxShadow: isPlaying ? "0 0 15px rgba(0,255,136,0.1)" : undefined,
-                transition: "box-shadow 300ms",
+                boxShadow: isPlaying
+                    ? "0 0 0 1px rgba(14,165,233,0.25), 0 8px 32px rgba(0,0,0,0.3), 0 0 60px rgba(14,165,233,0.10)"
+                    : "0 0 0 1px rgba(255,255,255,0.06), 0 8px 32px rgba(0,0,0,0.3)",
             }}
         >
             <div

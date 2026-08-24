@@ -5,6 +5,8 @@ import { useState } from "react";
 import { MusicGeneratorForm } from "@/components/MusicGeneratorForm";
 import { JobStatus } from "@/components/JobStatus";
 
+const CAPABILITIES = ["ACE-Step v1.5", "Modal GPU", "MP3 / WAV / FLAC", "10s – 5m"];
+
 export default function Home() {
   const [currentJobId, setCurrentJobId] = useState<string | null>(null);
 
@@ -13,81 +15,69 @@ export default function Home() {
   };
 
   return (
-    <div className="min-h-screen cyber-grid cyber-atmosphere flex flex-col items-center px-4 py-12 sm:px-8 sm:py-16">
-      <header className="flex flex-col items-center gap-5 text-center mb-12 max-w-2xl">
-        {/* Terminal prompt line */}
-        <div className="text-xs text-muted-foreground tracking-widest uppercase flex items-center gap-2">
-          <span className="text-primary">›</span>
-          <span>ACE-STEP v1.5</span>
-          <span className="text-border">|</span>
-          <span>MODAL GPU</span>
-          <span className="text-border">|</span>
-          <span className="text-primary animate-pulse">ONLINE</span>
+    <div className="mx-auto flex w-full max-w-5xl flex-col items-center px-6 py-16 lg:py-24">
+      <header className="mb-14 flex max-w-2xl flex-col items-center gap-6 text-center">
+        {/* Status badge */}
+        <div className="flex items-center gap-3">
+          <span className="relative flex h-2 w-2">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-75" />
+            <span className="relative inline-flex h-2 w-2 rounded-full bg-primary" />
+          </span>
+          <span className="font-mono text-[11px] tracking-widest text-muted-foreground">
+            Serverless GPU inference
+          </span>
         </div>
 
-        {/* Glitch headline */}
-        <h1
-          className="font-[family-name:var(--font-orbitron)] text-4xl sm:text-5xl lg:text-6xl font-black uppercase tracking-widest cyber-glitch"
-          style={{ color: "#00ff88" }}
-        >
-          AI Music Generator
-        </h1>
+        {/* Headline */}
+        <div>
+          <h1 className="headline-gradient text-5xl leading-none font-semibold tracking-[-0.03em] md:text-6xl lg:text-7xl">
+            AI Music Generator
+          </h1>
+          <div className="mt-4 flex items-center justify-center gap-4">
+            <span className="h-px w-12 bg-primary/50" />
+            <h2 className="font-mono text-sm tracking-widest text-primary md:text-base">
+              Text to song
+            </h2>
+            <span className="h-px w-12 bg-primary/50" />
+          </div>
+        </div>
 
-        <p className="text-muted-foreground text-sm sm:text-base max-w-md leading-relaxed tracking-wide">
-          <span className="text-primary/60">{'// '}</span>
-          Describe the vibe. The neural net handles the rest.
-          <span className="cursor-blink" />
+        {/* Tagline */}
+        <p className="max-w-md text-base leading-relaxed text-muted-foreground">
+          Describe the vibe. The model handles arrangement, lyrics, and mastering.
         </p>
 
-        {/* Accent line */}
-        <div className="flex items-center gap-3 w-full max-w-xs">
-          <div className="flex-1 h-px bg-border" />
-          <span className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">init</span>
-          <div className="flex-1 h-px bg-border" />
+        {/* Capability chips */}
+        <div className="flex flex-wrap justify-center gap-1.5">
+          {CAPABILITIES.map((capability) => (
+            <span
+              key={capability}
+              className="rounded-full border border-white/[0.08] px-2.5 py-0.5 font-mono text-[10px] tracking-widest text-muted-foreground"
+            >
+              {capability}
+            </span>
+          ))}
         </div>
       </header>
 
-      <main className="flex flex-col gap-8 w-full max-w-2xl items-center">
+      <main className="flex w-full max-w-2xl flex-col items-center gap-8">
         {!currentJobId ? (
-          <div className="w-full animate-in fade-in zoom-in duration-500">
+          <div className="animate-in fade-in slide-in-from-bottom-2 w-full duration-500">
             <MusicGeneratorForm onJobCreated={handleJobCreated} />
           </div>
         ) : (
-          <div className="w-full flex flex-col items-center gap-6">
+          <div className="flex w-full flex-col items-center gap-6">
             <JobStatus jobId={currentJobId} />
 
             <button
               onClick={() => setCurrentJobId(null)}
-              className="mt-8 text-xs uppercase tracking-[0.15em] text-muted-foreground hover:text-primary transition-colors"
-              style={{ fontFamily: "inherit" }}
+              className="mt-4 cursor-pointer rounded-lg px-4 py-2 font-mono text-[11px] tracking-widest text-muted-foreground transition-colors duration-150 hover:bg-white/[0.05] hover:text-[#ededef]"
             >
-              <span className="text-primary mr-1">›</span>
               Generate Another Song
             </button>
           </div>
         )}
       </main>
-
-      <footer className="mt-auto pt-20 text-center space-y-1">
-        <p className="text-[10px] uppercase tracking-[0.15em] text-muted-foreground">
-          <span className="text-primary/60">{'// '}</span>
-          Developed by{" "}
-          <a
-            href="mailto:david.p.west2@gmail.com"
-            className="text-muted-foreground hover:text-primary transition-colors"
-          >
-            David West
-          </a>
-        </p>
-        <p className="text-[10px] uppercase tracking-[0.15em] text-muted-foreground">
-          <a
-            href="https://github.com/dwest1507/ai-music-gen"
-            className="hover:text-primary transition-colors"
-          >
-            github/dwest1507/ai-music-gen
-          </a>
-        </p>
-      </footer>
     </div>
   );
 }
