@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.0](https://github.com/dwest1507/ai-music-gen/compare/ai-music-gen-v0.8.0...ai-music-gen-v0.9.0) (2026-08-24)
+
+
+### Features
+
+* simplify the generation form to a single prompt ([#61](https://github.com/dwest1507/ai-music-gen/issues/61)) ([7b6c5b0](https://github.com/dwest1507/ai-music-gen/commit/7b6c5b0f959f610dd2106643dd5b7cdf490234e8))
+
 ## [0.8.0](https://github.com/dwest1507/ai-music-gen/compare/ai-music-gen-v0.7.3...ai-music-gen-v0.8.0) (2026-04-05)
 
 
