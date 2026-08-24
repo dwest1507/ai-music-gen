@@ -76,14 +76,12 @@ describe('getRandomExample', () => {
         global.fetch = originalFetch;
     });
 
-    it('calls the correct endpoint without isAdvanced', async () => {
+    it('calls the correct endpoint with no query params', async () => {
         const mockExample = {
-            is_advanced: false,
             prompt: 'A simple track',
             lyrics: '',
             vocal_language: 'en',
-            duration: 60,
-            thinking: true,
+            instrumental: false,
         };
         (global.fetch as Mock).mockResolvedValue({
             ok: true,
@@ -93,39 +91,9 @@ describe('getRandomExample', () => {
 
         const result = await getRandomExample();
         expect(global.fetch).toHaveBeenCalledWith(
-            expect.stringContaining('/api/examples/random'),
+            'http://localhost:8000/api/examples/random',
             expect.anything()
         );
-        const url = (global.fetch as Mock).mock.calls[0][0] as string;
-        expect(url).not.toContain('is_advanced');
         expect(result.prompt).toBe('A simple track');
-    });
-
-    it('appends is_advanced=true when true', async () => {
-        (global.fetch as Mock).mockResolvedValue({
-            ok: true,
-            status: 200,
-            json: async () => ({
-                is_advanced: true, prompt: 'Advanced', lyrics: '', vocal_language: 'en', duration: 90, thinking: true,
-            }),
-        });
-
-        await getRandomExample(true);
-        const url = (global.fetch as Mock).mock.calls[0][0] as string;
-        expect(url).toContain('is_advanced=true');
-    });
-
-    it('appends is_advanced=false when false', async () => {
-        (global.fetch as Mock).mockResolvedValue({
-            ok: true,
-            status: 200,
-            json: async () => ({
-                is_advanced: false, prompt: 'Simple', lyrics: '', vocal_language: 'en', duration: 30, thinking: true,
-            }),
-        });
-
-        await getRandomExample(false);
-        const url = (global.fetch as Mock).mock.calls[0][0] as string;
-        expect(url).toContain('is_advanced=false');
     });
 });

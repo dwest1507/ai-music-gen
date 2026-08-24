@@ -41,12 +41,12 @@ _VOCAL_LANGUAGE_NAMES: dict[str, str] = {
 class GenerationRequest(BaseModel):
     prompt: str = Field(..., min_length=1, max_length=1000)
     lyrics: str = Field("", max_length=5000)
-    duration: float = Field(60, ge=10, le=300)
+    duration: Optional[float] = Field(None, ge=10, le=300)
     genre: Optional[str] = None
     vocal_language: str = Field("en")
     audio_format: str = Field("mp3")
     thinking: bool = Field(True)
-    use_format: bool = Field(False)
+    use_format: bool = Field(True)
     instrumental: bool = Field(False)
     bpm: Optional[int] = Field(None, ge=30, le=300)
     key_scale: Optional[str] = None
@@ -97,15 +97,10 @@ class RandomSampleRequest(BaseModel):
 
 
 class ExampleResponse(BaseModel):
-    is_advanced: bool
     prompt: str
     lyrics: str = ""
     vocal_language: str = "en"
-    bpm: Optional[int] = None
-    duration: int = 60
-    key_scale: Optional[str] = None
-    time_signature: Optional[str] = None
-    thinking: bool = True
+    instrumental: bool = False
 
 
 # ── Helpers ──────────────────────────────────────────────────────
@@ -131,6 +126,13 @@ def get_session_id(request: Request, response: Response) -> str:
     return session_id
 
 
+def _normalize_language(value: Optional[str]) -> str:
+    """Map an example's language field onto a code the form's selector offers."""
+    if not value or value not in _VOCAL_LANGUAGE_NAMES:
+        return "en"
+    return value
+
+
 def _build_release_task_payload(gen_request: GenerationRequest) -> dict:
     """Transform a GenerationRequest into the ACE-Step /release_task payload."""
     prompt = gen_request.prompt
@@ -147,7 +149,6 @@ def _build_release_task_payload(gen_request: GenerationRequest) -> dict:
     payload: dict = {
         "prompt": prompt,
         "lyrics": lyrics,
-        "audio_duration": gen_request.duration,
         "thinking": gen_request.thinking,
         "vocal_language": gen_request.vocal_language,
         "audio_format": gen_request.audio_format,
@@ -156,6 +157,9 @@ def _build_release_task_payload(gen_request: GenerationRequest) -> dict:
         "batch_size": gen_request.batch_size,
     }
 
+    if gen_request.duration is not None:
+        payload["audio_duration"] = gen_request.duration
+
     # When no lyrics are provided and it's not instrumental, delegate lyrics
     # generation to ACE-Step's built-in 5Hz LM via sample_mode.
     # We include the vocal language in the query because the Modal server
@@ -163,7 +167,7 @@ def _build_release_task_payload(gen_request: GenerationRequest) -> dict:
     if not gen_request.instrumental and not gen_request.lyrics:
         payload["sample_mode"] = True
         lang_name = _VOCAL_LANGUAGE_NAMES.get(gen_request.vocal_language, "English")
-        payload["sample_query"] = f"{gen_request.prompt} (lyrics in {lang_name})"
+        payload["sample_query"] = f"{prompt} (lyrics in {lang_name})"
 
     if gen_request.bpm is not None:
         payload["bpm"] = gen_request.bpm
@@ -421,67 +425,42 @@ async def cancel_job(task_id: str, request: Request, response: Response):
 
 
 @router.get("/examples/random", response_model=ExampleResponse)
-async def get_random_example(
-    is_advanced: Optional[bool] = Query(
-        None, description="If provided, only return examples for this mode."
-    ),
-):
+@limiter.limit("10/minute")
+async def get_random_example(request: Request, response: Response):
     """Pick a random example from the curated collection and map its fields."""
     try:
-        if is_advanced is True:
-            mode = "advanced"
-        elif is_advanced is False:
-            mode = "simple"
-        else:
-            # 50/50 chance of simple or advanced
-            mode = random.choice(["simple", "advanced"])
+        # Draw from both collections so every example is reachable, regardless
+        # of which one it came from — the UI no longer has separate modes.
+        all_files = [
+            (dirname, f)
+            for dirname in ("simple_mode", "text2music")
+            if (EXAMPLES_ROOT / dirname).exists()
+            for f in (EXAMPLES_ROOT / dirname).glob("*.json")
+        ]
 
-        if mode == "simple":
-            subdir = EXAMPLES_ROOT / "simple_mode"
-        else:
-            subdir = EXAMPLES_ROOT / "text2music"
-
-        if not subdir.exists():
-            raise HTTPException(
-                status_code=404, detail=f"Example directory {subdir} not found"
-            )
-
-        files = list(subdir.glob("*.json"))
-        if not files:
+        if not all_files:
             raise HTTPException(status_code=404, detail="No example files found")
 
-        random_file = random.choice(files)
+        dirname, random_file = random.choice(all_files)
         with open(random_file, "r") as f:
             data = json.load(f)
 
-        if mode == "simple":
-            vocal_lang = data.get("vocal_language", "en")
-            if vocal_lang == "unknown":
-                vocal_lang = "en"
-
+        if dirname == "simple_mode":
             return ExampleResponse(
-                is_advanced=False,
                 prompt=data.get("description", ""),
-                vocal_language=vocal_lang,
-                lyrics="[Instrumental]" if data.get("instrumental") else "",
-            )
-        else:
-            vocal_lang = data.get("language", "en")
-            if vocal_lang == "unknown":
-                vocal_lang = "en"
-
-            return ExampleResponse(
-                is_advanced=True,
-                prompt=data.get("caption", ""),
-                lyrics=data.get("lyrics", ""),
-                vocal_language=vocal_lang,
-                bpm=data.get("bpm"),
-                duration=data.get("duration", 60),
-                key_scale=data.get("keyscale"),
-                time_signature=data.get("timesignature"),
-                thinking=data.get("think", True),
+                lyrics="",
+                vocal_language=_normalize_language(data.get("vocal_language")),
+                instrumental=bool(data.get("instrumental")),
             )
 
+        return ExampleResponse(
+            prompt=data.get("caption", ""),
+            lyrics=data.get("lyrics", ""),
+            vocal_language=_normalize_language(data.get("language")),
+        )
+
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to fetch example: {str(e)}"
