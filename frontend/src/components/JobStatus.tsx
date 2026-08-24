@@ -187,7 +187,7 @@ export function JobStatus({ jobId }: JobStatusProps) {
             }
         >
             {/* Job header strip */}
-            <div className="flex items-center justify-between border-b border-white/[0.06] px-5 py-3">
+            <div className="flex items-center justify-between border-b border-white/[0.08] px-5 py-3">
                 <span className="font-mono text-[10px] tracking-widest text-muted-foreground/60">
                     job:{jobId.slice(0, 8)}
                 </span>
@@ -233,7 +233,7 @@ export function JobStatus({ jobId }: JobStatusProps) {
             <CardContent className="space-y-5">
                 {/* Metadata Badges */}
                 {job.metadata && (
-                    <div className="flex flex-wrap gap-2 border-t border-white/[0.06] pt-3">
+                    <div className="flex flex-wrap gap-2 border-t border-white/[0.08] pt-3">
                         {job.metadata.duration && (
                             <Badge variant="secondary" className="flex items-center gap-1">
                                 <Clock className="w-2.5 h-2.5" strokeWidth={1.5} /> {job.metadata.duration}s

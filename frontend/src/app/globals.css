@@ -33,9 +33,11 @@
   --accent-quaternary: #db2777;
   --destructive: #f43f5e;
   --destructive-foreground: #ffe4e6;
-  --border: rgba(255, 255, 255, 0.06);
-  --border-strong: rgba(255, 255, 255, 0.1);
-  --input: rgba(255, 255, 255, 0.04);
+  --border: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.14);
+  --input: rgba(2, 2, 3, 0.55);
+  --input-border: rgba(255, 255, 255, 0.14);
+  --input-placeholder: rgba(160, 165, 174, 0.8);
   --ring: #0ea5e9;
   --radius: 0.5rem;
 
@@ -225,20 +227,24 @@
 
   /* Glass surface used by cards and panels */
   .surface-card {
+    background-color: rgba(10, 10, 12, 0.72);
     background-image: linear-gradient(
       to bottom,
-      rgba(255, 255, 255, 0.08),
+      rgba(255, 255, 255, 0.07),
       rgba(255, 255, 255, 0.02)
     );
+    backdrop-filter: blur(12px);
     box-shadow: var(--shadow-card);
   }
 
   .surface-elevated {
+    background-color: rgba(10, 10, 12, 0.8);
     background-image: linear-gradient(
       to bottom,
-      rgba(255, 255, 255, 0.1),
+      rgba(255, 255, 255, 0.09),
       rgba(255, 255, 255, 0.04)
     );
+    backdrop-filter: blur(12px);
     box-shadow:
       0 0 0 1px rgba(255, 255, 255, 0.08),
       0 8px 40px rgba(0, 0, 0, 0.5),
@@ -308,24 +314,40 @@
    FORM CONTROLS
    ============================================================ */
 
+/* Form field label — brighter than a caption, fields must be scannable */
+.field-label {
+  display: flex;
+  align-items: center;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: #b4b9c1;
+}
+
 .field-input {
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--input);
+  border: 1px solid var(--input-border);
   border-radius: 0.5rem;
   color: #ededef;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.45);
   transition:
     border-color 150ms,
     background-color 150ms,
     box-shadow 150ms;
 }
 .field-input::placeholder {
-  color: rgba(138, 143, 152, 0.6);
+  color: var(--input-placeholder);
+}
+.field-input:hover:not(:disabled):not(:focus) {
+  border-color: rgba(255, 255, 255, 0.22);
 }
 .field-input:focus {
   outline: none;
-  border-color: rgba(14, 165, 233, 0.5);
-  background: rgba(255, 255, 255, 0.06);
-  box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.15);
+  border-color: rgba(14, 165, 233, 0.7);
+  background: rgba(2, 2, 3, 0.7);
+  box-shadow:
+    inset 0 1px 2px rgba(0, 0, 0, 0.45),
+    0 0 0 3px rgba(14, 165, 233, 0.2);
 }
 .field-input:disabled {
   opacity: 0.4;
@@ -338,16 +360,20 @@
 .field-input[type="range"] {
   -webkit-appearance: none;
   appearance: none;
-  height: 2px;
+  height: 4px;
   padding: 0;
   border: none;
-  background: rgba(255, 255, 255, 0.1);
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.16);
   box-shadow: none;
   cursor: pointer;
 }
+.field-input[type="range"]:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.22);
+}
 .field-input[type="range"]:focus {
   box-shadow: none;
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.16);
 }
 .field-input[type="range"]::-webkit-slider-thumb {
   -webkit-appearance: none;

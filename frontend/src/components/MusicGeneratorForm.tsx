@@ -65,7 +65,7 @@ function Label({ children, htmlFor }: { children: React.ReactNode; htmlFor?: str
     return (
         <label
             htmlFor={htmlFor}
-            className="flex items-center font-mono text-[10px] tracking-widest text-muted-foreground"
+            className="field-label"
         >
             {children}
         </label>
@@ -201,7 +201,7 @@ export function MusicGeneratorForm({ onJobCreated }: MusicGeneratorFormProps) {
 
     return (
         <Card className="w-full max-w-2xl mx-auto">
-            <CardHeader className="gap-4 border-b border-white/[0.06] p-5 sm:flex-row sm:items-center sm:justify-between sm:space-y-0">
+            <CardHeader className="gap-4 border-b border-white/[0.08] p-5 sm:flex-row sm:items-center sm:justify-between sm:space-y-0">
                 <CardTitle className="flex items-center gap-2.5 text-sm">
                     <span className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/[0.08] bg-white/[0.05]">
                         <Music className="h-4 w-4 text-primary" strokeWidth={1.5} />
@@ -270,7 +270,7 @@ export function MusicGeneratorForm({ onJobCreated }: MusicGeneratorFormProps) {
                                     className="text-center"
                                     aria-label="Minutes"
                                 />
-                                <span className="shrink-0 font-mono text-[10px] tracking-widest text-muted-foreground">m</span>
+                                <span className="shrink-0 font-mono text-[11px] text-muted-foreground">m</span>
                                 <Input
                                     id="durationSecs"
                                     type="number"
@@ -283,7 +283,7 @@ export function MusicGeneratorForm({ onJobCreated }: MusicGeneratorFormProps) {
                                     className="text-center"
                                     aria-label="Seconds"
                                 />
-                                <span className="shrink-0 font-mono text-[10px] tracking-widest text-muted-foreground">s</span>
+                                <span className="shrink-0 font-mono text-[11px] text-muted-foreground">s</span>
                             </div>
                         </div>
 
@@ -356,7 +356,7 @@ export function MusicGeneratorForm({ onJobCreated }: MusicGeneratorFormProps) {
                     </div>
 
                     {isAdvanced && (
-                        <div className="mt-4 space-y-4 border-t border-white/[0.06] pt-4 animate-in fade-in slide-in-from-top-2">
+                        <div className="mt-6 space-y-4 border-t border-white/[0.08] pt-6 animate-in fade-in slide-in-from-top-2">
                             <h3 className="flex items-center gap-2 font-mono text-[10px] tracking-widest text-primary-bright">
                                 <SlidersHorizontal className="w-3.5 h-3.5" strokeWidth={1.5} />
                                 Advanced Controls
@@ -496,7 +496,7 @@ export function MusicGeneratorForm({ onJobCreated }: MusicGeneratorFormProps) {
                             </div>
 
                             <div className="flex flex-wrap gap-5 pt-2">
-                                <label className="flex cursor-pointer items-center gap-2 font-mono text-[10px] tracking-widest text-muted-foreground">
+                                <label className="field-label cursor-pointer gap-2">
                                     <input
                                         type="checkbox"
                                         checked={thinking}
@@ -507,7 +507,7 @@ export function MusicGeneratorForm({ onJobCreated }: MusicGeneratorFormProps) {
                                     Use LM Thinking
                                     <FieldTooltip text="Enables AI chain-of-thought reasoning to automatically detect and refine metadata like BPM, key, and duration. Recommended for best results." />
                                 </label>
-                                <label className="flex cursor-pointer items-center gap-2 font-mono text-[10px] tracking-widest text-muted-foreground">
+                                <label className="field-label cursor-pointer gap-2">
                                     <input
                                         type="checkbox"
                                         checked={useFormat}
@@ -518,7 +518,7 @@ export function MusicGeneratorForm({ onJobCreated }: MusicGeneratorFormProps) {
                                     LM Format Prompt/Lyrics
                                     <FieldTooltip text="Uses the AI to enhance and structure your prompt and lyrics before generation. Useful when your input is short or informal." />
                                 </label>
-                                <label className="flex cursor-pointer items-center gap-2 font-mono text-[10px] tracking-widest text-muted-foreground">
+                                <label className="field-label cursor-pointer gap-2">
                                     <input
                                         type="checkbox"
                                         id="instrumental"

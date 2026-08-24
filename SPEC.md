@@ -389,13 +389,16 @@ The frontend shares its visual language with the davidwest.dev portfolio so both
 | `--primary-foreground` | `#082f49` | Text on primary fills |
 | `--accent-secondary` / `--accent-tertiary` / `--accent-quaternary` | `#7c3aed` / `#38bdf8` / `#db2777` | Per-card accents on the About page |
 | `--destructive` | `#f43f5e` | Errors and failed jobs |
-| `--border` / `--border-strong` | `rgba(255,255,255,0.06)` / `rgba(255,255,255,0.10)` | Hairline borders |
+| `--border` / `--border-strong` | `rgba(255,255,255,0.08)` / `rgba(255,255,255,0.14)` | Hairline borders |
+| `--input` / `--input-border` | `rgba(2,2,3,0.55)` / `rgba(255,255,255,0.14)` | Recessed form-field well and its edge |
 
 **Typography** — Inter (`next/font`, `--font-inter`) for all body and heading copy; the platform monospace stack is used only for micro-labels: 10–11px, `tracking-widest`, muted. Headings are sentence case with tight tracking; the hero headline uses the `.headline-gradient` white-to-translucent gradient fill.
 
-**Surfaces** — cards are `rounded-2xl`, `border-white/[0.06]`, with a top-down white translucent gradient (`.surface-card`) and layered shadows (`--shadow-card`, `--shadow-card-hover`). `.surface-elevated` adds a faint accent glow. Depth comes from the fixed `AmbientBackground` layer plus a 64px grid overlay painted by `body::before`.
+**Surfaces** — cards are `rounded-2xl`, `border-white/[0.09]`, with a semi-opaque base (`rgba(10,10,12,0.72)`), a top-down white translucent gradient and a backdrop blur (`.surface-card`), plus layered shadows (`--shadow-card`, `--shadow-card-hover`). The base is deliberately opaque enough that a card reads as a distinct panel over the ambient layer rather than dissolving into it. `.surface-elevated` is denser still and adds a faint accent glow. Depth comes from the fixed `AmbientBackground` layer plus a 64px grid overlay painted by `body::before`.
 
-**Controls** — buttons are `rounded-lg` with variants driven by a `data-variant` attribute (`default`, `secondary`, `outline`, `ghost`, `destructive`, `link`) defined in `globals.css`; inputs, selects, textareas and range sliders share the `.field-input` class (translucent fill, hairline border, sky focus ring). Badges are pill-shaped mono chips.
+**Controls** — buttons are `rounded-lg` with variants driven by a `data-variant` attribute (`default`, `secondary`, `outline`, `ghost`, `destructive`, `link`) defined in `globals.css`. Inputs, selects, textareas and range sliders share the `.field-input` class: a dark recessed well (`--input`) with a visible `--input-border` edge, an inset shadow for depth, a border that brightens on hover and a sky ring on focus — fields must stay clearly delineated against the card they sit on. Field labels use `.field-label` (11px mono, `#b4b9c1`), brighter than the `.micro-label` caption style so forms stay scannable. Badges are pill-shaped mono chips.
+
+`.field-input`, `.field-label` and the `.btn[data-variant]` rules live in the unlayered section of `globals.css` rather than inside `@layer utilities`, so they are always emitted regardless of Tailwind's utility handling.
 
 **Motion & accessibility** — `float` / `float-slow` drive the ambient blobs, `slide-down` and `blink` are available for transient UI; a global `prefers-reduced-motion` block reduces all animation and transition durations to ~0. Focus is always visible via a global `:focus-visible` outline plus accent halo.
 
