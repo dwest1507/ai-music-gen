@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.0](https://github.com/dwest1507/ai-music-gen/compare/ai-music-gen-v0.9.0...ai-music-gen-v0.10.0) (2026-08-24)
+
+
+### Features
+
+* **frontend:** adopt the portfolio design system ([#60](https://github.com/dwest1507/ai-music-gen/issues/60)) ([af90b60](https://github.com/dwest1507/ai-music-gen/commit/af90b60ccba7fc90a7eb31f3ef36dd97190b258e))
+
 ## [0.9.0](https://github.com/dwest1507/ai-music-gen/compare/ai-music-gen-v0.8.0...ai-music-gen-v0.9.0) (2026-08-24)
 
 
