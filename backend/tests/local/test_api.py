@@ -1,5 +1,6 @@
+import json
 import pytest
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 import httpx
 
 
@@ -22,7 +23,6 @@ async def test_submit_generation(async_client, mock_acestep_client):
 
     payload = {
         "prompt": "An epic orchestral soundtrack",
-        "duration": 60,
         "genre": "Cinematic",
     }
 
@@ -37,8 +37,9 @@ async def test_submit_generation(async_client, mock_acestep_client):
     # Verify the client was called with transformed payload
     call_args = mock_acestep_client.submit_task.call_args[0][0]
     assert "Cinematic" in call_args["prompt"]
-    assert call_args["audio_duration"] == 60
+    assert "audio_duration" not in call_args  # duration omitted when not provided
     assert call_args["thinking"] is True
+    assert call_args["use_format"] is True
     assert call_args["infer_method"] == "ode"
     assert "session_id" in response.cookies
 
@@ -61,6 +62,7 @@ async def test_submit_generation_with_lyrics(async_client, mock_acestep_client):
     call_args = mock_acestep_client.submit_task.call_args[0][0]
     assert call_args["lyrics"] == "Hello world, this is a song"
     assert call_args["audio_format"] == "wav"
+    assert call_args["audio_duration"] == 30  # duration included when explicitly set
 
 
 @pytest.mark.asyncio
@@ -95,6 +97,22 @@ async def test_submit_generation_sample_mode_includes_language_hint(
     call_args = mock_acestep_client.submit_task.call_args[0][0]
     assert call_args["sample_mode"] is True
     assert call_args["sample_query"] == "A trap rap song (lyrics in Spanish)"
+
+
+@pytest.mark.asyncio
+async def test_submit_generation_sample_query_includes_genre(
+    async_client, mock_acestep_client
+):
+    """The lyrics query reuses the genre-prefixed prompt so lyrics match the genre."""
+    mock_acestep_client.submit_task.return_value = {"task_id": "genre-query-task"}
+
+    payload = {"prompt": "a song about rain", "genre": "Metal"}
+    response = await async_client.post("/api/generate", json=payload)
+    assert response.status_code == 202
+
+    call_args = mock_acestep_client.submit_task.call_args[0][0]
+    assert call_args["prompt"] == "Metal. a song about rain"
+    assert call_args["sample_query"] == "Metal. a song about rain (lyrics in English)"
 
 
 @pytest.mark.asyncio
@@ -302,24 +320,127 @@ async def test_get_random_example(async_client):
     response = await async_client.get("/api/examples/random")
     assert response.status_code == 200
     data = response.json()
-    assert "is_advanced" in data
-    assert "prompt" in data
+    assert data["prompt"]
+    assert set(data) == {"prompt", "lyrics", "vocal_language", "instrumental"}
 
 
 @pytest.mark.asyncio
-async def test_get_random_example_simple(async_client):
-    response = await async_client.get("/api/examples/random?is_advanced=false")
+async def test_get_random_example_pools_both_collections(async_client, tmp_path):
+    """One pool spans both example directories, so every example is reachable."""
+    (tmp_path / "simple_mode").mkdir()
+    (tmp_path / "simple_mode" / "s.json").write_text(json.dumps({"description": "s"}))
+    (tmp_path / "text2music").mkdir()
+    (tmp_path / "text2music" / "t.json").write_text(json.dumps({"caption": "t"}))
+
+    pools = []
+
+    def capture_choice(seq):
+        pools.append(list(seq))
+        return seq[0]
+
+    with (
+        patch("app.api.routes.generation.EXAMPLES_ROOT", new=tmp_path),
+        patch("app.api.routes.generation.random.choice", side_effect=capture_choice),
+    ):
+        response = await async_client.get("/api/examples/random")
+
     assert response.status_code == 200
-    data = response.json()
-    assert data["is_advanced"] is False
+    assert {dirname for dirname, _ in pools[0]} == {"simple_mode", "text2music"}
 
 
 @pytest.mark.asyncio
-async def test_get_random_example_advanced(async_client):
-    response = await async_client.get("/api/examples/random?is_advanced=true")
+async def test_get_random_example_rate_limit_returns_429(async_client):
+    """/api/examples/random allows 10 requests per minute per session, then 429s."""
+    async_client.cookies.set("session_id", "example-rate-limit-session")
+
+    for _ in range(10):
+        assert (await async_client.get("/api/examples/random")).status_code == 200
+
+    assert (await async_client.get("/api/examples/random")).status_code == 429
+
+
+@pytest.mark.asyncio
+async def test_get_random_example_maps_simple_mode_fields(async_client, tmp_path):
+    """A simple_mode example maps description/instrumental and drops lyrics."""
+    (tmp_path / "simple_mode").mkdir()
+    (tmp_path / "simple_mode" / "one.json").write_text(
+        json.dumps(
+            {
+                "description": "a mellow guitar instrumental",
+                "instrumental": True,
+                "vocal_language": "unknown",
+            }
+        )
+    )
+
+    with patch("app.api.routes.generation.EXAMPLES_ROOT", new=tmp_path):
+        response = await async_client.get("/api/examples/random")
+
     assert response.status_code == 200
-    data = response.json()
-    assert data["is_advanced"] is True
+    assert response.json() == {
+        "prompt": "a mellow guitar instrumental",
+        "lyrics": "",
+        # "unknown" is not a language the form offers, so it falls back to "en"
+        "vocal_language": "en",
+        "instrumental": True,
+    }
+
+
+@pytest.mark.asyncio
+async def test_get_random_example_maps_text2music_fields(async_client, tmp_path):
+    """A text2music example maps caption/lyrics/language and is never instrumental."""
+    (tmp_path / "text2music").mkdir()
+    (tmp_path / "text2music" / "one.json").write_text(
+        json.dumps(
+            {
+                "caption": "an upbeat city pop track",
+                "lyrics": "[Verse 1]\nneon rain",
+                "language": "ja",
+                "bpm": 120,
+                "duration": 160,
+            }
+        )
+    )
+
+    with patch("app.api.routes.generation.EXAMPLES_ROOT", new=tmp_path):
+        response = await async_client.get("/api/examples/random")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "prompt": "an upbeat city pop track",
+        "lyrics": "[Verse 1]\nneon rain",
+        "vocal_language": "ja",
+        "instrumental": False,
+    }
+
+
+@pytest.mark.asyncio
+async def test_get_random_example_unreadable_file_returns_500(async_client, tmp_path):
+    """A malformed example file surfaces as a 500, not an unhandled error."""
+    (tmp_path / "simple_mode").mkdir()
+    (tmp_path / "simple_mode" / "broken.json").write_text("{ not json")
+
+    with patch("app.api.routes.generation.EXAMPLES_ROOT", new=tmp_path):
+        response = await async_client.get("/api/examples/random")
+
+    assert response.status_code == 500
+    assert "Failed to fetch example" in response.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_generate_rate_limit_returns_429(async_client, mock_acestep_client):
+    """/api/generate allows 5 requests per minute per session, then 429s."""
+    mock_acestep_client.submit_task.return_value = {"task_id": "rate-limited-task"}
+    async_client.cookies.set("session_id", "rate-limit-session")
+
+    payload = {"prompt": "A short jingle"}
+    for _ in range(5):
+        assert (
+            await async_client.post("/api/generate", json=payload)
+        ).status_code == 202
+
+    response = await async_client.post("/api/generate", json=payload)
+    assert response.status_code == 429
 
 
 # ── Error propagation ────────────────────────────────────────────
@@ -667,8 +788,8 @@ async def test_get_random_example_directory_not_found(async_client, tmp_path):
         "app.api.routes.generation.EXAMPLES_ROOT",
         new=tmp_path / "nonexistent_subdir",
     ):
-        response = await async_client.get("/api/examples/random?is_advanced=false")
-    assert response.status_code == 500
+        response = await async_client.get("/api/examples/random")
+    assert response.status_code == 404
 
 
 @pytest.mark.asyncio
@@ -679,5 +800,5 @@ async def test_get_random_example_no_files(async_client, tmp_path):
     (tmp_path / "text2music").mkdir()
 
     with patch("app.api.routes.generation.EXAMPLES_ROOT", new=tmp_path):
-        response = await async_client.get("/api/examples/random?is_advanced=false")
-    assert response.status_code == 500
+        response = await async_client.get("/api/examples/random")
+    assert response.status_code == 404

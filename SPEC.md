@@ -123,7 +123,7 @@ Supports optional API key via:
 | FR-9 | User can download generated audio files | Must |
 | FR-10 | User can cancel pending/queued generations | Should |
 | FR-11 | System proxies audio downloads through the backend (not exposing Modal URL) | Must |
-| FR-12 | User can select between Simple Mode (prompt-only) and Advanced Mode (full controls) | Should |
+| FR-12 | Single unified form: only prompt is required; genre, language, lyrics, and instrumental toggle are optional | Should |
 | FR-13 | System provides a "random sample" / "inspire me" feature using `/create_random_sample` | Could |
 | FR-14 | System supports LM-enhanced generation (`thinking=true`) for higher quality output | Should |
 | FR-15 | User can click a button to fill the form with a random example prompt from the curated collection | Should |
@@ -134,7 +134,7 @@ Supports optional API key via:
 |----|-------------|----------|
 | NFR-1 | Backend response time < 500ms for proxied requests (excluding Modal inference) | Must |
 | NFR-2 | Rate limiting: max 5 generation requests per minute per session | Must |
-| NFR-3 | Input validation: prompts max 500 chars, lyrics max 5000 chars | Must |
+| NFR-3 | Input validation: prompts max 1000 chars, lyrics max 5000 chars | Must |
 | NFR-4 | All secrets stored in environment variables, never in code | Must |
 | NFR-5 | CORS limited to frontend domain only | Must |
 | NFR-6 | Session IDs generated cryptographically (UUID4 or `secrets.token_urlsafe`) | Must |
@@ -236,7 +236,13 @@ Takes care of communicating with the model API:
 | `GET /api/models` | GET | `GET /v1/models` | List available models |
 | `POST /api/random-sample` | POST | `POST /create_random_sample` | Get random sample params |
 | `POST /api/format` | POST | `POST /format_input` | LM-format prompt/lyrics |
+| `GET /api/examples/random` | GET | (none — local example files) | Random curated example for the form |
 | `GET /health` | GET | `GET /health` | Health check (local + upstream) |
+
+Every `/api/*` route is rate limited by `slowapi`, keyed on the session cookie with an IP
+fallback: 5/min for `POST /api/generate`, 60/min for job status, 30/min for cancel and
+`GET /api/models`, 20/min for audio downloads, and 10/min for `/api/random-sample`,
+`/api/format`, and `/api/examples/random`.
 
 **Route detail: `POST /api/generate`**
 
@@ -244,15 +250,15 @@ Request body (Pydantic model):
 
 ```json
 {
-  "prompt": "string (required, max 500 chars)",
+  "prompt": "string (required, max 1000 chars)",
   "lyrics": "string (optional, max 5000 chars — only sent when user provides > 5 non-whitespace chars)",
   "instrumental": "bool (optional, default false — forces [Instrumental] lyrics on the backend)",
-  "duration": "float (optional, 10-300, default 60)",
+  "duration": "float (optional, 10-300, default null — LM auto-determines when omitted)",
   "genre": "string (optional)",
   "vocal_language": "string (optional, default 'en')",
   "audio_format": "string (optional, 'mp3'|'wav'|'flac', default 'mp3')",
   "thinking": "bool (optional, default true)",
-  "use_format": "bool (optional, default false)",
+  "use_format": "bool (optional, default true — LM enhances prompt/lyrics before generation)",
   "bpm": "int (optional, 30-300)",
   "key_scale": "string (optional)",
   "time_signature": "string (optional)",
@@ -261,6 +267,8 @@ Request body (Pydantic model):
   "infer_method": "string (optional, 'ode'|'sde', default 'ode')"
 }
 ```
+
+The frontend sends only `prompt`, `genre`, `lyrics`, `vocal_language`, and `instrumental`. All other parameters use quality-optimized backend defaults.
 
 Response (202 Accepted):
 
@@ -277,11 +285,29 @@ The backend transforms this into the ACE-Step `/release_task` payload:
 - `lyrics` / `instrumental` → `lyrics` (resolution order):
   1. `instrumental=true` → `"[Instrumental]"` (no vocals)
   2. `lyrics` non-empty (user-provided) → use provided lyrics as-is
-  3. No lyrics + not instrumental → `lyrics=""` + `sample_mode=True` + `sample_query=prompt`
-     (delegates auto-generation to ACE-Step's built-in 5Hz LM)
-- `duration` → `audio_duration`
+  3. No lyrics + not instrumental → `lyrics=""` + `sample_mode=True` +
+     `sample_query="{genre-prefixed prompt} (lyrics in {language name})"`
+     (delegates auto-generation to ACE-Step's built-in 5Hz LM; the language name
+     is spelled out because the upstream server treats `"en"` as "no preference")
+- `duration` → `audio_duration` (only included when explicitly provided; omitted to let LM auto-determine)
 - `thinking` → `thinking`
 - Other fields mapped 1:1
+
+**Route detail: `GET /api/examples/random`**
+
+Picks one file uniformly at random across both `backend/examples/simple_mode/` and
+`backend/examples/text2music/`, and maps it onto the fields the unified form uses:
+
+```json
+{
+  "prompt": "string",
+  "lyrics": "string (empty for simple_mode examples)",
+  "vocal_language": "string (a code the form's selector offers; anything else → 'en')",
+  "instrumental": "bool"
+}
+```
+
+Returns 404 when no example files are present, 500 when a file cannot be read or parsed.
 
 **Route detail: `GET /api/jobs/{task_id}`**
 
@@ -341,12 +367,12 @@ frontend/src/
 
 **`api.ts`** — API client mapping to backend API structure. Forms typed requests and parses typed responses.
 
-**`MusicGeneratorForm.tsx`** — Provides:
+**`MusicGeneratorForm.tsx`** — Provides a single unified form:
+- Prompt textarea (required)
+- Genre datalist and vocal language selector
 - Lyrics textarea (only sent when user types > 5 non-whitespace chars; otherwise AI auto-generates)
-- "Instrumental only" checkbox in advanced mode (disables lyrics textarea, sends `instrumental: true`)
-- Vocal language selector
-- "Simple / Advanced" mode toggle
-- Advanced mode mapping: BPM, key/scale, time signature, inference steps
+- "Instrumental only" checkbox (disables lyrics textarea, sends `instrumental: true`)
+- All advanced parameters (audio format, inference steps, diffusion method, etc.) use quality-optimized backend defaults
 
 **`JobStatus.tsx`** — Maps states:
 - Handles polling cycle against backend for task status updates.
@@ -396,9 +422,11 @@ The frontend shares its visual language with the davidwest.dev portfolio so both
 
 **Surfaces** — cards are `rounded-2xl`, `border-white/[0.09]`, with a semi-opaque base (`rgba(10,10,12,0.72)`), a top-down white translucent gradient and a backdrop blur (`.surface-card`), plus layered shadows (`--shadow-card`, `--shadow-card-hover`). The base is deliberately opaque enough that a card reads as a distinct panel over the ambient layer rather than dissolving into it. `.surface-elevated` is denser still and adds a faint accent glow. Depth comes from the fixed `AmbientBackground` layer plus a 64px grid overlay painted by `body::before`.
 
-**Controls** — buttons are `rounded-lg` with variants driven by a `data-variant` attribute (`default`, `secondary`, `outline`, `ghost`, `destructive`, `link`) defined in `globals.css`. Inputs, selects, textareas and range sliders share the `.field-input` class: a dark recessed well (`--input`) with a visible `--input-border` edge, an inset shadow for depth, a border that brightens on hover and a sky ring on focus — fields must stay clearly delineated against the card they sit on. Field labels use `.field-label` (11px mono, `#b4b9c1`), brighter than the `.micro-label` caption style so forms stay scannable. Badges are pill-shaped mono chips.
+**Controls** — buttons are `rounded-lg` with variants driven by a `data-variant` attribute (`default`, `secondary`, `outline`, `ghost`, `destructive`, `link`) defined in `globals.css`. Inputs, selects and textareas share the `.field-input` class: a dark recessed well (`--input`) with a visible `--input-border` edge, an inset shadow for depth, a border that brightens on hover and a sky ring on focus — fields must stay clearly delineated against the card they sit on. Field labels use `.field-label` (11px mono, `#b4b9c1`), brighter than the `.micro-label` caption style so forms stay scannable. Badges are pill-shaped mono chips.
 
 `.field-input`, `.field-label` and the `.btn[data-variant]` rules live in the unlayered section of `globals.css` rather than inside `@layer utilities`, so they are always emitted regardless of Tailwind's utility handling.
+
+**Layout** — every page is a centred column (`max-w-5xl`) with a hero (mono status line, gradient headline, accent rule, capability chips) above the content. The generator is one card: a header strip carrying the title and the "Try an Example" action, then the fields. Field grids collapse to a single column below the `sm` breakpoint.
 
 **Motion & accessibility** — `float` / `float-slow` drive the ambient blobs, `slide-down` and `blink` are available for transient UI; a global `prefers-reduced-motion` block reduces all animation and transition durations to ~0. Focus is always visible via a global `:focus-visible` outline plus accent halo.
 

@@ -64,7 +64,7 @@ const TECH_STACK = [
     subtitle: "Next.js on Vercel",
     accentColor: "#38bdf8",
     description:
-      "A responsive web app with simple and advanced generation modes. Async job status is tracked via long-polling with exponential backoff. The waveform player is built on wavesurfer.js. All API shapes are validated client-side with Zod schemas matching the backend's Pydantic contracts, catching interface drift at the boundary. The frontend never contacts the Modal API directly — all traffic flows through the FastAPI backend.",
+      "A responsive web app built around a single prompt box — everything else is optional. Async job status is tracked via long-polling with exponential backoff. The waveform player is built on wavesurfer.js. All API shapes are validated client-side with Zod schemas matching the backend's Pydantic contracts, catching interface drift at the boundary. The frontend never contacts the Modal API directly — all traffic flows through the FastAPI backend.",
     tags: [
       "Next.js 16",
       "React 19",

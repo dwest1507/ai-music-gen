@@ -5,7 +5,7 @@ import { useState } from "react";
 import { MusicGeneratorForm } from "@/components/MusicGeneratorForm";
 import { JobStatus } from "@/components/JobStatus";
 
-const CAPABILITIES = ["ACE-Step v1.5", "Modal GPU", "MP3 / WAV / FLAC", "10s – 5m"];
+const CAPABILITIES = ["ACE-Step v1.5", "Modal GPU", "AI-written lyrics", "MP3"];
 
 export default function Home() {
   const [currentJobId, setCurrentJobId] = useState<string | null>(null);
