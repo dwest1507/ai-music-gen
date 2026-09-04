@@ -36,6 +36,12 @@ The delay while the GPU container starts and restores its model snapshot because
 had scaled to zero.
 _Avoid_: GPU cold start, model loading
 
+**Snapshot rebuild**:
+A Modal wake where the saved snapshot was discarded, so the models are loaded from
+scratch and the snapshot re-created. Roughly twice the delay of an ordinary wake, and
+it happens without warning.
+_Avoid_: Snapshot miss, cache miss, snapshot failure
+
 **Inference**:
 The time the GPU spends actually generating audio, once it is warm.
 _Avoid_: Generation time, processing
