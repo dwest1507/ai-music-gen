@@ -104,8 +104,14 @@ Release Please manages unified versioning across `package.json`, `frontend/packa
 
 ## Testing Policy
 
-**This repository requires 100% test coverage.** Every new feature, endpoint, or component must include corresponding tests before it can be merged.
+**Tests must verify behavior through public interfaces, not implementation details.** A
+test that breaks when you rename an internal function was testing the wrong thing.
 
-- Backend: all new routes, service methods, and business logic must have pytest coverage
-- Frontend: all new components and API client functions must have Vitest coverage
-- Never merge a change that reduces coverage below 100%
+- Build new work test-first — one behavior, one test, one implementation, then repeat.
+  Writing all the tests up front produces tests of imagined behavior.
+- Cover what matters: critical user journeys, non-obvious logic, and the defensive
+  branches that are hard to exercise by hand (rate limiting, budget exhaustion, error
+  paths). Not every getter.
+- Prefer asserting through the public surface — an HTTP endpoint, a rendered component —
+  over reaching into internal objects.
+- **There is no coverage percentage gate.** Coverage is a diagnostic, not a target.

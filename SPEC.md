@@ -142,7 +142,7 @@ Supports optional API key via:
 | NFR-8 | Cold start time acceptable with auto-sleep capabilities | Should |
 | NFR-9 | Graceful degradation when ACE-Step API is unavailable | Should |
 | NFR-10 | HTTPS enforced on all production endpoints | Must |
-| NFR-11 | 100% test coverage required; all new features must include corresponding tests | Must |
+| NFR-11 | Tests verify behavior through public interfaces; critical paths and defensive branches are covered. No coverage percentage gate | Must |
 | NFR-12 | Frontend uses the same visual design system as the davidwest.dev portfolio, so the two properties read as one product family | Should |
 | NFR-13 | UI is responsive from 360px upward and honours `prefers-reduced-motion` | Should |
 
