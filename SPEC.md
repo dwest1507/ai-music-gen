@@ -514,6 +514,17 @@ The backend uses the `uv` ecosystem rather than the generic `pip` ecosystem: onl
 
 Each ecosystem groups all of its updates into a single pull request (`groups: patterns: ["*"]`) and is capped at 5 open PRs, so routine bumps arrive as one reviewable change per ecosystem instead of one PR per package. Commit messages use the conventional-commit prefixes `build(deps)` / `build(deps-dev)` so Release Please does not treat dependency bumps as features or fixes.
 
+**Held-back major upgrades.** Four frontend majors are deliberately not taken, because each breaks the toolchain and needs a migration of its own rather than a version bump:
+
+| Package | Offered | Held at | Blocker |
+|---|---|---|---|
+| `typescript` | 7.x | 5.x | `typescript-eslint` (via `eslint-config-next`) refuses to load under the TS 7 API, so `npm run lint` fails outright |
+| `eslint` | 10.x | 9.x | `eslint-plugin-react` (via `eslint-config-next`) calls the removed ESLint 9 context API — `contextOrFilename.getFilename is not a function` |
+| `lucide-react` | 1.x | 0.x | v1 dropped brand icons; `Github` no longer exists and `/about` imports it |
+| `@vitejs/plugin-react` | 6.x | 5.x | v6 replaced Babel with oxc and removed the `babel` option `vitest.config.ts` uses to run `babel-plugin-react-compiler`; React Compiler moves to `compiler: true` plus `oxc-transform-react` |
+
+None of the four carries a security advisory, so holding them costs no coverage. Dependabot will keep re-offering them in the frontend group until each migration lands.
+
 ---
 
 ## 6. Environment Variables
