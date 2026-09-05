@@ -137,12 +137,12 @@ Supports optional API key via:
 | ID | Requirement | Priority |
 |----|-------------|----------|
 | NFR-1 | Backend response time < 500ms for proxied requests (excluding Modal inference) | Must |
-| NFR-2 | Rate limiting: max 5 generation requests per minute per session | Must |
+| NFR-2 | Rate limiting: max 5 generation requests per minute per client IP | Must |
 | NFR-3 | Input validation: prompts max 1000 chars, lyrics max 5000 chars | Must |
 | NFR-4 | All secrets stored in environment variables, never in code | Must |
 | NFR-5 | CORS limited to frontend domain only | Must |
 | NFR-6 | Session IDs generated cryptographically (UUID4 or `secrets.token_urlsafe`) | Must |
-| NFR-7 | Backend stateless — no filesystem state | Must |
+| NFR-7 | Backend holds no filesystem or database state. In-memory GPU warm state is permitted and may be lost on restart | Must |
 | NFR-8 | Cold start time acceptable with auto-sleep capabilities | Should |
 | NFR-9 | Graceful degradation when ACE-Step API is unavailable | Should |
 | NFR-10 | HTTPS enforced on all production endpoints | Must |

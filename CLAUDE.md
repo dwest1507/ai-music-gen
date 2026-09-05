@@ -13,7 +13,7 @@ This repository follows **spec-driven development**. `SPEC.md` is the single sou
 
 ## Project Overview
 
-AI Music Gen is a web application for generating music via the ACE-Step API (hosted on Modal GPU infrastructure). The architecture is a **stateless proxy**: the FastAPI backend handles CORS, rate limiting, session management, and validation, then proxies requests to the Modal API. No persistent state is stored in the backend.
+AI Music Gen is a web application for generating music via the ACE-Step API (hosted on Modal GPU infrastructure). The architecture is a **stateless proxy**: the FastAPI backend handles CORS, rate limiting, session management, and validation, then proxies requests to the Modal API. Nothing is persisted to disk or to a database; the one exception is in-memory GPU warm state, which bounds prewarm spend and is deliberately allowed to be lost on restart.
 
 **Deployment:** Frontend → Vercel, Backend → Railway, Inference → Modal (GPU)
 
@@ -65,7 +65,8 @@ Browser → Next.js (Vercel, port 3000)
 
 - **Entry:** `app/main.py` — FastAPI app, CORS middleware, lifespan management
 - **Config:** `app/core/config.py` — Pydantic Settings, reads from env
-- **Rate limiting:** `app/core/limiter.py` — slowapi, key = session cookie → IP fallback
+- **Rate limiting:** `app/core/limiter.py` — slowapi, keyed on client IP. Deliberately *not* the session cookie: the client supplies it, so rotating it minted a fresh allowance per request
+- **Warm state:** `app/core/warm_state.py` — in-memory dedupe window and monthly warm budget for GPU prewarm. Process-local, so correct only while the backend runs as a single instance (see `docs/adr/0001-speculative-gpu-prewarm.md`)
 - **Service:** `app/services/acestep_client.py` — all Modal API calls (httpx AsyncClient, HTTP/2, shared lifecycle)
 - **Routes:** `app/api/routes/generation.py` — all `/api/*` endpoints
 
@@ -76,6 +77,7 @@ Key endpoints and their rate limits:
 | `GET /api/jobs/{task_id}` | 60/min |
 | `GET /api/audio/{task_id}` | 20/min |
 | `GET /api/examples/random` | 10/min |
+| `POST /api/warmup` | 10/min |
 
 The `ACEStepClient` is instantiated once at startup (lifespan), shared across requests, and closed on shutdown.
 
