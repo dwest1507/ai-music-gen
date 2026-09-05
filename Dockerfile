@@ -17,4 +17,11 @@ COPY backend/ .
 # Security: Switch to non-root user
 USER appuser
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# --proxy-headers with a permissive --forwarded-allow-ips is load-bearing, not
+# incidental: the rate limiter keys on the client IP, and behind Railway's proxy
+# the peer address is the proxy itself. Without trusting X-Forwarded-For every
+# visitor would share one rate-limit bucket. Trusting any peer is safe here only
+# because the container is reachable solely through Railway's edge, which sets
+# the header itself.
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", \
+     "--proxy-headers", "--forwarded-allow-ips", "*"]

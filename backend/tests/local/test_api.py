@@ -5,13 +5,45 @@ import httpx
 
 
 @pytest.mark.asyncio
-async def test_health_check(async_client, mock_acestep_client):
+async def test_health_check_answers_without_contacting_upstream(
+    async_client, mock_acestep_client
+):
+    """Liveness must not wake the GPU.
+
+    A health check that pings Modal turns every uptime probe and deploy check
+    into a GPU wake, and stalls for the length of a cold start while doing it.
+    """
     response = await async_client.get("/health")
+
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "healthy"
     assert data["version"] == "1.0.0"
-    assert data["upstream"] == "healthy"
+    mock_acestep_client.health_check.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_upstream_health_check_reports_reachability(
+    async_client, mock_acestep_client
+):
+    response = await async_client.get("/health/upstream")
+
+    assert response.status_code == 200
+    assert response.json()["upstream"] == "healthy"
+
+
+@pytest.mark.asyncio
+async def test_upstream_health_check_reports_an_unreachable_service(
+    async_client, mock_acestep_client
+):
+    from app.services.acestep_client import ACEStepError
+
+    mock_acestep_client.health_check.side_effect = ACEStepError("down", 503)
+
+    response = await async_client.get("/health/upstream")
+
+    assert response.status_code == 200
+    assert response.json()["upstream"] == "unreachable"
 
 
 @pytest.mark.asyncio
@@ -749,12 +781,16 @@ async def test_format_input_error(async_client, mock_acestep_client):
 
 
 @pytest.mark.asyncio
-async def test_health_check_upstream_unreachable(async_client, mock_acestep_client):
+async def test_health_check_stays_healthy_when_upstream_is_down(
+    async_client, mock_acestep_client
+):
+    """Liveness is about this service, so an unreachable GPU must not fail it."""
     mock_acestep_client.health_check.side_effect = Exception("Connection refused")
+
     response = await async_client.get("/health")
+
     assert response.status_code == 200
-    data = response.json()
-    assert data["upstream"] == "unreachable"
+    assert response.json()["status"] == "healthy"
 
 
 def test_get_session_id_secure_cookie():

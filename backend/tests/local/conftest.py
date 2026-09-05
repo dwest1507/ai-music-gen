@@ -41,13 +41,37 @@ async def mock_acestep_client():
     return client
 
 
+class FakeClock:
+    """A hand-wound clock, so warm-window tests need no sleeping."""
+
+    def __init__(self, now: float = 1_000.0):
+        self.now = now
+
+    def __call__(self) -> float:
+        return self.now
+
+    def advance(self, seconds: float) -> None:
+        self.now += seconds
+
+
+@pytest.fixture
+def fake_clock():
+    return FakeClock()
+
+
 @pytest_asyncio.fixture
-async def async_client(mock_acestep_client):
+async def async_client(mock_acestep_client, fake_clock):
     """Create a test client with the mocked ACE-Step client injected."""
     from app.main import app
+    from app.core.warm_state import WarmState
 
     # Override the lifespan-managed client
     app.state.acestep_client = mock_acestep_client
+
+    # Rebuilt per test. Warm state is process-global in production (see ADR 0001),
+    # so leaving one test's wakes visible to the next would make results depend on
+    # ordering — the same hazard reset_rate_limiter guards against.
+    app.state.warm_state = WarmState(clock=fake_clock)
 
     async with AsyncClient(
         transport=ASGITransport(app=app), base_url="http://test"
