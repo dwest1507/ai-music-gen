@@ -3,12 +3,15 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, field_validator
 from typing import Optional
 import json
+import logging
 import secrets
 import random
 from pathlib import Path
 from app.core.config import settings
 from app.core.limiter import limiter
 from app.services.acestep_client import ACEStepClient, ACEStepError
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 SESSION_COOKIE_NAME = "session_id"
@@ -368,6 +371,27 @@ async def download_audio(
         media_type=content_type,
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+@router.post("/warmup")
+@limiter.limit("10/minute")
+async def warmup(request: Request, response: Response):
+    """Dispatch a wake to the GPU ahead of the user asking for a song.
+
+    Modal wake dominates the wait for a first song and cannot overlap with
+    anything, because nothing contacts the GPU until a Task is submitted. The
+    frontend calls this on the visitor's first genuine interaction so the wake
+    runs while they read the page and fill the form. See SPEC.md FR-16.
+    """
+    client = _get_client(request)
+    try:
+        await client.health_check()
+    except ACEStepError:
+        # Opportunistic: the visitor has not asked for anything yet, so there is
+        # nothing to report and nothing to retry. They pay Modal wake later if
+        # they do submit a Task.
+        logger.warning("Prewarm could not reach the ACE-Step API", exc_info=True)
+    return {"status": "warming"}
 
 
 @router.get("/models")
