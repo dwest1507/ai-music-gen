@@ -64,7 +64,9 @@ describe('JobStatus', () => {
         render(<JobStatus jobId="test-job-123" />);
 
         await waitFor(() => {
-            expect(screen.getByText('Generating Music...')).toBeInTheDocument();
+            // The header now names the phase and counts elapsed time, rather
+            // than rotating messages that only imply something is happening.
+            expect(screen.getByText(/^Generating · \d+s$/)).toBeInTheDocument();
         });
 
         expect(mockApiFetch).toHaveBeenCalledTimes(1);

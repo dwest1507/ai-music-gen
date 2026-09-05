@@ -8,24 +8,17 @@ import { Loader2, CheckCircle2, XCircle, AlertCircle, Clock, Activity, Hash, Fil
 import { AudioPlayer } from "@/components/AudioPlayer";
 import { Badge } from "@/components/ui/badge";
 
+// Personality, kept beneath the phase label rather than standing in for it.
+// The card header always states the true phase and elapsed time; these rotate
+// underneath.
 const GENERATING_MESSAGES = [
-    "Generating Music...",
-    "Now the AI is doing its thing...",
-    "Longer prompts take more time to process...",
-    "The model is crafting your audio, note by note...",
-    "Still generating... this is the hard part...",
-    "Composing, mixing, mastering... all at once...",
-    "Your prompt was pretty complex, huh?",
-    "The AI is really thinking about this one...",
+    "Composing, mixing, mastering... all at once.",
+    "The model is crafting your audio, note by note.",
+    "Longer prompts take more time to process.",
+    "Did you use a lot of lyrics? That's probably why.",
+    "Real-time music synthesis, minus the real-time part.",
+    "The AI has excellent taste and refuses to rush.",
     "Fine. It's being creative. Let it cook.",
-    "A great song takes time. Even for robots.",
-    "Did you use a lot of lyrics? That's probably why...",
-    "The GPU is sweating a little, not gonna lie...",
-    "We're talking real-time music synthesis here...",
-    "Beethoven took years. This'll take minutes. Maybe.",
-    "The AI has excellent taste and refuses to rush...",
-    "Still running... have you tried a shorter prompt?",
-    "I mean, it IS generating something spectacular...",
     "Any minute now...",
 ];
 
@@ -66,6 +59,7 @@ export function JobStatus({ jobId }: JobStatusProps) {
     const [isPolling, setIsPolling] = useState(true);
     const [generatingMessageIndex, setGeneratingMessageIndex] = useState(0);
     const generatingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+    const [elapsedSeconds, setElapsedSeconds] = useState(0);
 
     useEffect(() => {
         let timeoutId: NodeJS.Timeout;
@@ -103,10 +97,12 @@ export function JobStatus({ jobId }: JobStatusProps) {
                 }
             }
 
+            // Capped at 5s. Modal wake alone routinely pushes a first song past
+            // two minutes, so the old 10s tier meant a finished track could sit
+            // unnoticed for ten seconds at exactly the moment the wait ended.
+            // The 60/min rate limit leaves ample room for this.
             let nextDelay = 2000;
-            if (elapsed > 120000) {
-                nextDelay = 10000;
-            } else if (elapsed > 60000) {
+            if (elapsed > 60000) {
                 nextDelay = 5000;
             }
 
@@ -124,6 +120,13 @@ export function JobStatus({ jobId }: JobStatusProps) {
             clearTimeout(timeoutId);
         };
     }, [jobId, isPolling]);
+
+    useEffect(() => {
+        const isActive = job?.status === "queued" || job?.status === "processing";
+        if (!isActive) return;
+        const tick = setInterval(() => setElapsedSeconds((s) => s + 1), 1000);
+        return () => clearInterval(tick);
+    }, [job?.status]);
 
     useEffect(() => {
         const isActive = job?.status === "queued" || job?.status === "processing";
@@ -217,11 +220,18 @@ export function JobStatus({ jobId }: JobStatusProps) {
                         style={{ color: statusConfig?.color ?? "#8a8f98" }}
                     />
                     <span style={{ color: statusConfig?.color ?? "#ededef" }}>
-                        {(job.status === "queued" || job.status === "processing") && GENERATING_MESSAGES[generatingMessageIndex]}
+                        {(job.status === "queued" || job.status === "processing") &&
+                            `Generating · ${elapsedSeconds}s`}
                         {job.status === "completed" && "Generation Complete!"}
                         {job.status === "failed" && "Generation Failed"}
                     </span>
                 </CardTitle>
+
+                {(job.status === "queued" || job.status === "processing") && (
+                    <CardDescription className="mt-1 font-mono text-[10px] tracking-widest">
+                        {GENERATING_MESSAGES[generatingMessageIndex]}
+                    </CardDescription>
+                )}
 
                 {job.metadata && (job.metadata.prompt || job.metadata.genre) && (
                     <CardDescription className="mt-1 line-clamp-2 text-xs italic">

@@ -1,14 +1,23 @@
 "use client";
 
 import * as React from "react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { MusicGeneratorForm } from "@/components/MusicGeneratorForm";
 import { JobStatus } from "@/components/JobStatus";
+import { startPrewarm } from "@/lib/prewarm";
 
 const CAPABILITIES = ["ACE-Step v1.5", "Modal GPU", "AI-written lyrics", "MP3"];
 
 export default function Home() {
   const [currentJobId, setCurrentJobId] = useState<string | null>(null);
+  // null until prewarm reports back — we do not yet know which phase a
+  // submission would land in.
+  const [gpuWarm, setGpuWarm] = useState<boolean | null>(null);
+
+  // Wakes the GPU on the visitor's first interaction, so Modal wake overlaps the
+  // time they spend reading this page rather than starting when they hit
+  // Generate. See SPEC.md FR-16 and ADR 0001.
+  useEffect(() => startPrewarm((status) => setGpuWarm(status.warm)), []);
 
   const handleJobCreated = (jobId: string) => {
     setCurrentJobId(jobId);
@@ -63,7 +72,7 @@ export default function Home() {
       <main className="flex w-full max-w-2xl flex-col items-center gap-8">
         {!currentJobId ? (
           <div className="animate-in fade-in slide-in-from-bottom-2 w-full duration-500">
-            <MusicGeneratorForm onJobCreated={handleJobCreated} />
+            <MusicGeneratorForm onJobCreated={handleJobCreated} gpuWarm={gpuWarm} />
           </div>
         ) : (
           <div className="flex w-full flex-col items-center gap-6">

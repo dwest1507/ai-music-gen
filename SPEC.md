@@ -393,7 +393,7 @@ frontend/src/
 │   └── ui/                       # Shared UI primitives
 ├── lib/
 │   ├── api.ts                     # API client
-│   ├── session.ts                 # Session management
+│   ├── prewarm.ts                 # GPU prewarm trigger + capped heartbeat
 │   └── utils.ts                   # Utilities
 ```
 

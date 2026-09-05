@@ -90,6 +90,7 @@ The `ACEStepClient` is instantiated once at startup (lifespan), shared across re
 - **Audio:** `src/components/AudioPlayer.tsx` — wavesurfer.js waveform + playback
 - **Layout:** `src/components/NavBar.tsx`, `src/components/layout/` — sticky header, ambient background layer, global footer
 - **API client:** `src/lib/api.ts` — typed fetch wrapper with Zod validation and `ApiError` class
+- **Prewarm:** `src/lib/prewarm.ts` — wakes the GPU on the visitor's first interaction, then holds it with a visibility-gated, capped heartbeat. See SPEC.md FR-16/FR-17 and `docs/adr/0001-speculative-gpu-prewarm.md`
 - **Design system:** tokens live in `src/app/globals.css` and mirror the davidwest.dev portfolio (near-black surfaces, `#0ea5e9` accent, Inter, mono micro-labels). Consume semantic tokens (`text-primary`, `text-muted-foreground`, `.field-input`, `.surface-card`) instead of hard-coded hex. See SPEC.md §5.3.3.
 
 ### Versioning

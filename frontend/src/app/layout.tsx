@@ -4,6 +4,7 @@ import "./globals.css";
 import { NavBar } from "@/components/NavBar";
 import { AmbientBackground } from "@/components/layout/AmbientBackground";
 import { Footer } from "@/components/layout/Footer";
+import { API_BASE_URL } from "@/lib/api";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -27,6 +28,13 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className={inter.variable}>
+      <head>
+        {/* The first call to the API is the prewarm, fired on the visitor's
+            first interaction. Resolving DNS and completing the TLS handshake
+            ahead of it keeps that moment as early as possible. */}
+        <link rel="preconnect" href={API_BASE_URL} crossOrigin="anonymous" />
+        <link rel="dns-prefetch" href={API_BASE_URL} />
+      </head>
       <body className="flex min-h-screen flex-col antialiased">
         <AmbientBackground />
         <NavBar />

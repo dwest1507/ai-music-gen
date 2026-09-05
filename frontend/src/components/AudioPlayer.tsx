@@ -20,9 +20,38 @@ export function AudioPlayer({ audioUrl, className }: AudioPlayerProps) {
     const [isPlaying, setIsPlaying] = useState(false);
     const [isReady, setIsReady] = useState(false);
     const [isMuted, setIsMuted] = useState(false);
+    const [objectUrl, setObjectUrl] = useState<string | null>(null);
+
+    // Pull the song into memory once, then serve both playback and download from
+    // it. The audio lives on the GPU container's ephemeral disk and disappears
+    // when it scales to zero, so a Download that goes back to the network 404s
+    // once the container is gone. Holding it here makes Download work for the
+    // life of the page — as long as the task id survives anyway.
+    useEffect(() => {
+        let cancelled = false;
+        let created: string | null = null;
+
+        (async () => {
+            try {
+                const response = await fetch(fullAudioUrl, { credentials: "include" });
+                if (!response.ok) return;
+                const blob = await response.blob();
+                if (cancelled) return;
+                created = URL.createObjectURL(blob);
+                setObjectUrl(created);
+            } catch {
+                // Leave objectUrl null; the player simply stays un-ready.
+            }
+        })();
+
+        return () => {
+            cancelled = true;
+            if (created) URL.revokeObjectURL(created);
+        };
+    }, [fullAudioUrl]);
 
     useEffect(() => {
-        if (!containerRef.current) return;
+        if (!containerRef.current || !objectUrl) return;
 
         wavesurferRef.current = WaveSurfer.create({
             container: containerRef.current,
@@ -33,7 +62,7 @@ export function AudioPlayer({ audioUrl, className }: AudioPlayerProps) {
             barGap: 3,
             height: 56,
             normalize: true,
-            url: fullAudioUrl,
+            url: objectUrl,
         });
 
         wavesurferRef.current.on("ready", () => {
@@ -47,7 +76,7 @@ export function AudioPlayer({ audioUrl, className }: AudioPlayerProps) {
         return () => {
             wavesurferRef.current?.destroy();
         };
-    }, [fullAudioUrl]);
+    }, [objectUrl]);
 
     const togglePlay = () => {
         wavesurferRef.current?.playPause();
@@ -61,8 +90,10 @@ export function AudioPlayer({ audioUrl, className }: AudioPlayerProps) {
     };
 
     const handleDownload = () => {
+        if (!objectUrl) return;
         const link = document.createElement("a");
-        link.href = fullAudioUrl;
+        // The in-memory copy, not the network — see the fetch effect above.
+        link.href = objectUrl;
 
         let filename = "generated-music.mp3";
         try {
