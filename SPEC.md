@@ -128,7 +128,7 @@ Supports optional API key via:
 | FR-14 | System supports LM-enhanced generation (`thinking=true`) for higher quality output | Should |
 | FR-15 | User can click a button to fill the form with a random example prompt from the curated collection | Should |
 | FR-16 | System prewarms the GPU on the visitor's first genuine interaction, so Modal wake overlaps the time they spend reading the page and filling the form | Must |
-| FR-17 | System holds the GPU warm with a heartbeat while the tab is visible, up to a fixed ceiling, then stops | Must |
+| FR-17 | System holds the GPU warm with a heartbeat while the tab is visible, up to a fixed ceiling, then stands down — reporting the GPU as cold and re-arming for the visitor's next interaction | Must |
 | FR-18 | User sees the true phase of their generation (waking GPU vs generating) with elapsed time, rather than messages on a timer | Should |
 | FR-19 | Generated audio is fetched once into the browser and reused for both playback and download | Should |
 
@@ -137,7 +137,7 @@ Supports optional API key via:
 | ID | Requirement | Priority |
 |----|-------------|----------|
 | NFR-1 | Backend response time < 500ms for proxied requests (excluding Modal inference) | Must |
-| NFR-2 | Rate limiting: max 5 generation requests per minute per client IP | Must |
+| NFR-2 | Rate limiting: max 5 generation requests per minute per client IP, where that IP is resolved from proxy headers the caller cannot forge | Must |
 | NFR-3 | Input validation: prompts max 1000 chars, lyrics max 5000 chars | Must |
 | NFR-4 | All secrets stored in environment variables, never in code | Must |
 | NFR-5 | CORS limited to frontend domain only | Must |
@@ -149,9 +149,12 @@ Supports optional API key via:
 | NFR-11 | Tests verify behavior through public interfaces; critical paths and defensive branches are covered. No coverage percentage gate | Must |
 | NFR-12 | Frontend uses the same visual design system as the davidwest.dev portfolio, so the two properties read as one product family | Should |
 | NFR-13 | UI is responsive from 360px upward and honours `prefers-reduced-motion` | Should |
-| NFR-14 | Prewarm spend is bounded by a monthly warm budget; once exhausted the site degrades to cold starts rather than erroring | Must |
-| NFR-15 | Repeat prewarm requests inside one warm window are collapsed into a single upstream wake | Must |
+| NFR-14 | Prewarm spend is bounded by a warm budget over the calendar month, matching the period Modal bills over; once exhausted the site degrades to cold starts rather than erroring | Must |
+| NFR-15 | Repeat prewarm requests inside one warm window are collapsed into a single upstream wake, including those arriving while that wake is still in flight | Must |
 | NFR-16 | `GET /health` answers from local state only; upstream reachability is a separate endpoint | Must |
+| NFR-17 | Prewarm never fails a request: any upstream error, converted or not, is reported as a cold GPU | Must |
+| NFR-18 | Every audio load failure is named to the visitor rather than leaving inert controls | Should |
+| NFR-19 | A refused poll backs off past the limiter's window and says so, rather than retrying at the rate that caused it | Should |
 
 ### 4.3 Security Requirements
 
@@ -258,6 +261,15 @@ securely but supplied by the client, so keying on it lets a caller mint a fresh 
 per request simply by rotating the value — which would leave both `POST /api/generate`
 and `POST /api/warmup`, the two routes that cost money, effectively unlimited.
 
+The key is only as trustworthy as the address the app resolves for the caller. Behind
+Railway the peer address is the proxy, so uvicorn runs with `--proxy-headers` and an
+explicit `--forwarded-allow-ips` range (`FORWARDED_ALLOW_IPS`) — never `*`. Under `*`
+uvicorn reads the **leftmost** `X-Forwarded-For` entry, and Railway's edge appends rather
+than replaces, so a client-sent header would land leftmost and become the key,
+reinstating the same bypass at the deployment layer. Given an explicit range uvicorn
+walks the list from the right and stops at the first address outside it: the one the
+proxy appended.
+
 **Route detail: `POST /api/warmup`**
 
 Fire-and-forget: returns as soon as the wake is dispatched, without waiting for the GPU
@@ -267,9 +279,17 @@ minutes stays under any sane limit while holding a GPU warm indefinitely:
 
 1. **Warm-window dedupe** — a request arriving while the GPU is known to be warm returns
    immediately without contacting Modal, collapsing concurrent visitors into one wake.
+   The window opens when the wake is *dispatched*, not when it returns: a wake waits on a
+   container that is by definition not answering, so callers arriving during it are
+   exactly the burst being collapsed. While a wake is in flight the endpoint reports the
+   GPU as cold, since a wake in progress is itself evidence it was not warm.
 2. **Rate limit** — 10/min, per the IP-keyed limiter above.
-3. **Monthly warm budget** — once exhausted, the endpoint stops dispatching wakes and
-   reports success anyway, so visitors fall back to cold starts instead of failing.
+3. **Monthly warm budget** — charged when a wake is dispatched, so an in-flight wake
+   cannot be overspent by the callers arriving during it. The period is the calendar
+   month in UTC, matching what Modal bills over; a rolling thirty-day period would let
+   two adjacent allowances land inside a single bill. Once exhausted, the endpoint stops
+   dispatching wakes and reports success anyway, so visitors fall back to cold starts
+   instead of failing.
 
 Modal's own workspace spend limit sits beneath these as an independent backstop. Note
 its failure mode differs: exhausting it stops all workloads, taking the site down rather
@@ -539,7 +559,7 @@ These improvements were identified during a system design review and implemented
   supplied by the client, so rotating it minted an unlimited number of fresh budgets and
   left the two endpoints that cost money unprotected. Cost control outranks NAT fairness
   here.
-- **Frontend Polling Backoff & Timeout**: The `JobStatus` polling mechanism implements an exponential backoff after the first minute and includes an upper-bound timeout to prevent infinite polling.
+- **Frontend Polling Backoff & Timeout**: The `JobStatus` polling mechanism steps its interval down after the first minute and includes an upper-bound timeout to prevent infinite polling. A refused poll (429) backs off past the limiter's one-minute window and tells the viewer it is checking less often — the limiter keys on client IP, so a tab does not own the 60/min allowance and two viewers behind one NAT can reach it between them.
 - **Duplicate Submission Guard**: The frontend generation form includes idempotency and duplicate submission guarding to prevent overlapping expensive inference requests.
 - **ACE-Step Lyrics Auto-Generation**: When a user submits without lyrics (and not instrumental), the backend sets `sample_mode=True` and `sample_query` in the payload, delegating lyrics generation to ACE-Step's built-in 5Hz Language Model. This produces lyrics optimized for music-lyrics coherence and also infers metadata (BPM, key, duration) for fields the user hasn't set.
 

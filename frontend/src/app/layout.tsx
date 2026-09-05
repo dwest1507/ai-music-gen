@@ -31,8 +31,13 @@ export default function RootLayout({
       <head>
         {/* The first call to the API is the prewarm, fired on the visitor's
             first interaction. Resolving DNS and completing the TLS handshake
-            ahead of it keeps that moment as early as possible. */}
-        <link rel="preconnect" href={API_BASE_URL} crossOrigin="anonymous" />
+            ahead of it keeps that moment as early as possible.
+
+            use-credentials, not anonymous: every API call goes out with
+            credentials: "include", and the browser keeps credentialed and
+            anonymous connections in separate pools. An anonymous preconnect
+            would warm a pool nothing then uses, paying the handshake twice. */}
+        <link rel="preconnect" href={API_BASE_URL} crossOrigin="use-credentials" />
         <link rel="dns-prefetch" href={API_BASE_URL} />
       </head>
       <body className="flex min-h-screen flex-col antialiased">

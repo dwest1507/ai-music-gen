@@ -63,21 +63,45 @@ export function startPrewarm(onStatus?: (status: WarmStatus) => void): () => voi
         }
     };
 
-    const beat = () => {
-        if (Date.now() - startedAt >= PREWARM_CEILING_MS) {
-            stopHeartbeat();
-            return;
+    const attach = () => {
+        for (const event of INTERACTION_EVENTS) {
+            window.addEventListener(event, trigger, { passive: true });
         }
-        // Skip rather than stop: a backgrounded tab pays nothing, but a visitor
-        // who returns within the ceiling picks the heartbeat back up.
-        if (document.visibilityState !== "visible") return;
-        void wake();
     };
 
     const detach = () => {
         for (const event of INTERACTION_EVENTS) {
             window.removeEventListener(event, trigger);
         }
+    };
+
+    /**
+     * Let the container go, and go back to watching for the next interaction.
+     *
+     * Arming again is the point: the ceiling exists to stop paying for someone who
+     * walked away, not to decide they are gone for good. Without this the first
+     * lull would disable prewarm for the life of the tab, so a visitor who came
+     * back and generated a song paid a full cold start — while the UI, still
+     * holding the last warm answer we sent, told them it would be quick.
+     */
+    const standDown = () => {
+        stopHeartbeat();
+        triggered = false;
+        // The GPU is on its way to zero and we have stopped holding it. Saying so
+        // is what keeps the form from promising a wait it can no longer deliver.
+        onStatus?.({ warm: false });
+        attach();
+    };
+
+    const beat = () => {
+        if (Date.now() - startedAt >= PREWARM_CEILING_MS) {
+            standDown();
+            return;
+        }
+        // Skip rather than stop: a backgrounded tab pays nothing, but a visitor
+        // who returns within the ceiling picks the heartbeat back up.
+        if (document.visibilityState !== "visible") return;
+        void wake();
     };
 
     function trigger() {
@@ -89,9 +113,7 @@ export function startPrewarm(onStatus?: (status: WarmStatus) => void): () => voi
         timer = setInterval(beat, PREWARM_HEARTBEAT_MS);
     }
 
-    for (const event of INTERACTION_EVENTS) {
-        window.addEventListener(event, trigger, { passive: true });
-    }
+    attach();
 
     return () => {
         detach();

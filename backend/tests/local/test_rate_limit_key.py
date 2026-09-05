@@ -6,7 +6,10 @@ the value minted a fresh budget each time — leaving the two endpoints that cos
 money effectively unlimited. See SPEC.md section 8.1.
 """
 
+from pathlib import Path
+
 import pytest
+from uvicorn.middleware.proxy_headers import _TrustedHosts
 
 
 @pytest.mark.asyncio
@@ -42,3 +45,38 @@ async def test_rotating_the_session_cookie_does_not_grant_a_fresh_generate_budge
     )
 
     assert refused.status_code == 429
+
+
+def _configured_trusted_hosts() -> list[str]:
+    """The proxy ranges the deployed container actually runs with.
+
+    Read out of the Dockerfile rather than restated here, because the value that
+    matters is the one shipped. A test asserting against its own copy would still
+    pass with `*` back in the CMD.
+    """
+    dockerfile = Path(__file__).parents[3] / "Dockerfile"
+    for line in dockerfile.read_text().splitlines():
+        if line.startswith("ENV FORWARDED_ALLOW_IPS="):
+            return line.split("=", 1)[1].strip().strip('"').split(",")
+    raise AssertionError("Dockerfile does not set FORWARDED_ALLOW_IPS")
+
+
+def test_the_deployed_proxy_config_ignores_a_client_supplied_forwarded_for():
+    """The IP the limiter keys on must be the proxy's word, not the caller's.
+
+    Railway appends to X-Forwarded-For rather than replacing it, and uvicorn under
+    `--forwarded-allow-ips "*"` reads the *leftmost* entry — so a client-sent header
+    would become the rate-limit key and rotating it would mint a fresh allowance per
+    request, exactly the bypass moving the key off the session cookie closed. Given
+    explicit ranges uvicorn walks from the right instead and stops at the first
+    address outside them: the one Railway appended.
+    """
+    trusted = _TrustedHosts(_configured_trusted_hosts())
+    real_client = "203.0.113.9"
+
+    spoofed = f"1.2.3.4, {real_client}"
+    padded = f"9.9.9.9, 10.1.2.3, {real_client}"
+
+    assert trusted.get_trusted_client_address(spoofed)[0] == real_client
+    assert trusted.get_trusted_client_address(padded)[0] == real_client
+    assert trusted.get_trusted_client_address(real_client)[0] == real_client

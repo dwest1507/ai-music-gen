@@ -85,3 +85,47 @@ describe('AudioPlayer audio retention', () => {
         expect(link.click).toHaveBeenCalled();
     });
 });
+
+describe('AudioPlayer load failures', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        URL.createObjectURL = vi.fn(() => 'blob:generated-song');
+        URL.revokeObjectURL = vi.fn();
+    });
+
+    afterEach(() => {
+        vi.unstubAllGlobals();
+        vi.restoreAllMocks();
+    });
+
+    /**
+     * Every one of these previously left objectUrl null with nothing rendered:
+     * a dimmed waveform and three dead buttons, which reads as a broken page
+     * rather than a track that is no longer there.
+     */
+    it('says the track is gone when the container has scaled down', async () => {
+        vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, status: 404 })));
+
+        render(<AudioPlayer audioUrl="/api/audio/abc123" />);
+
+        expect(await screen.findByRole('alert')).toHaveTextContent(/no longer available/i);
+    });
+
+    it('says to wait when the audio endpoint refuses the request', async () => {
+        // /api/audio allows 20/min, and the limiter keys on client IP, so a
+        // shared network can reach it without this viewer doing anything odd.
+        vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, status: 429 })));
+
+        render(<AudioPlayer audioUrl="/api/audio/abc123" />);
+
+        expect(await screen.findByRole('alert')).toHaveTextContent(/too many requests/i);
+    });
+
+    it('reports a network failure rather than showing dead controls', async () => {
+        vi.stubGlobal('fetch', vi.fn(async () => { throw new TypeError('network down'); }));
+
+        render(<AudioPlayer audioUrl="/api/audio/abc123" />);
+
+        expect(await screen.findByRole('alert')).toBeInTheDocument();
+    });
+});

@@ -21,6 +21,7 @@ export function AudioPlayer({ audioUrl, className }: AudioPlayerProps) {
     const [isReady, setIsReady] = useState(false);
     const [isMuted, setIsMuted] = useState(false);
     const [objectUrl, setObjectUrl] = useState<string | null>(null);
+    const [loadError, setLoadError] = useState<string | null>(null);
 
     // Pull the song into memory once, then serve both playback and download from
     // it. The audio lives on the GPU container's ephemeral disk and disappears
@@ -34,19 +35,38 @@ export function AudioPlayer({ audioUrl, className }: AudioPlayerProps) {
         (async () => {
             try {
                 const response = await fetch(fullAudioUrl, { credentials: "include" });
-                if (!response.ok) return;
+                if (cancelled) return;
+                if (!response.ok) {
+                    // Every failure has to say something. A silent one leaves a
+                    // dimmed waveform and three dead buttons, which reads as a
+                    // broken page rather than a track that is no longer there.
+                    setLoadError(
+                        response.status === 404
+                            ? "This track is no longer available. Generate a new one to hear it."
+                            : response.status === 429
+                              ? "Too many requests. Wait a moment and reload to play this track."
+                              : "Could not load this track. Reload the page to try again."
+                    );
+                    return;
+                }
                 const blob = await response.blob();
                 if (cancelled) return;
                 created = URL.createObjectURL(blob);
                 setObjectUrl(created);
             } catch {
-                // Leave objectUrl null; the player simply stays un-ready.
+                if (cancelled) return;
+                setLoadError("Could not load this track. Check your connection and reload.");
             }
         })();
 
         return () => {
             cancelled = true;
             if (created) URL.revokeObjectURL(created);
+            // Cleared alongside the revoke: a revoked URL left in state would still
+            // be handed to Download, which would then quietly save nothing. The
+            // error goes with it, so a new track does not inherit the old one's.
+            setObjectUrl(null);
+            setLoadError(null);
         };
     }, [fullAudioUrl]);
 
@@ -135,10 +155,16 @@ export function AudioPlayer({ audioUrl, className }: AudioPlayerProps) {
                     : "0 0 0 1px rgba(255,255,255,0.06), 0 8px 32px rgba(0,0,0,0.3)",
             }}
         >
-            <div
-                ref={containerRef}
-                className={cn("w-full mb-4", !isReady && "opacity-30 pointer-events-none")}
-            />
+            {loadError ? (
+                <p role="alert" className="mb-4 text-sm text-muted-foreground">
+                    {loadError}
+                </p>
+            ) : (
+                <div
+                    ref={containerRef}
+                    className={cn("w-full mb-4", !isReady && "opacity-30 pointer-events-none")}
+                />
+            )}
 
             <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">

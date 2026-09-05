@@ -11,6 +11,14 @@ import { Badge } from "@/components/ui/badge";
 // Personality, kept beneath the phase label rather than standing in for it.
 // The card header always states the true phase and elapsed time; these rotate
 // underneath.
+/**
+ * How long to wait after the backend refuses a poll.
+ *
+ * Long enough to clear the one-minute window the limiter counts over, so the
+ * back-off actually ends the collision instead of retrying into it.
+ */
+const THROTTLED_POLL_MS = 15000;
+
 const GENERATING_MESSAGES = [
     "Composing, mixing, mastering... all at once.",
     "The model is crafting your audio, note by note.",
@@ -60,10 +68,12 @@ export function JobStatus({ jobId }: JobStatusProps) {
     const [generatingMessageIndex, setGeneratingMessageIndex] = useState(0);
     const generatingIntervalRef = useRef<NodeJS.Timeout | null>(null);
     const [elapsedSeconds, setElapsedSeconds] = useState(0);
+    const [isThrottled, setIsThrottled] = useState(false);
 
     useEffect(() => {
         let timeoutId: NodeJS.Timeout;
         let isMounted = true;
+        let throttledUntil = 0;
         const startTime = Date.now();
         const MAX_POLLING_TIME = 10 * 60 * 1000;
 
@@ -82,6 +92,7 @@ export function JobStatus({ jobId }: JobStatusProps) {
                 if (!isMounted) return;
 
                 setJob(data);
+                setIsThrottled(false);
                 if (data.status === "completed" || data.status === "failed") {
                     setIsPolling(false);
                     return;
@@ -90,10 +101,27 @@ export function JobStatus({ jobId }: JobStatusProps) {
                 console.error("Polling error:", err);
                 if (!isMounted) return;
 
-                if (err instanceof Error && "status" in err && (err as { status: number }).status === 404) {
+                const status =
+                    err instanceof Error && "status" in err
+                        ? (err as { status: number }).status
+                        : 0;
+
+                if (status === 404) {
                     setError("Job not found");
                     setIsPolling(false);
                     return;
+                }
+
+                if (status === 429) {
+                    // The limiter keys on client IP, so a tab does not own the
+                    // 60/min allowance — two viewers behind one NAT reach it
+                    // between them. Swallowing the refusal kept the tab polling
+                    // at the rate that caused it and left the job looking hung
+                    // until the ten-minute timeout. Back off and say so instead.
+                    throttledUntil = Date.now() + THROTTLED_POLL_MS;
+                    setIsThrottled(true);
+                } else {
+                    setIsThrottled(false);
                 }
             }
 
@@ -104,6 +132,9 @@ export function JobStatus({ jobId }: JobStatusProps) {
             let nextDelay = 2000;
             if (elapsed > 60000) {
                 nextDelay = 5000;
+            }
+            if (Date.now() < throttledUntil) {
+                nextDelay = THROTTLED_POLL_MS;
             }
 
             if (isPolling && isMounted) {
@@ -165,11 +196,24 @@ export function JobStatus({ jobId }: JobStatusProps) {
     if (!job) {
         return (
             <Card className="w-full max-w-2xl mx-auto">
-                <CardContent className="flex items-center justify-center gap-3 py-10 pt-6">
-                    <Loader2 className="h-5 w-5 animate-spin text-primary" strokeWidth={1.5} />
-                    <span className="font-mono text-[11px] tracking-widest text-muted-foreground">
-                        Initializing job...
-                    </span>
+                <CardContent className="flex flex-col items-center justify-center gap-2 py-10 pt-6">
+                    <div className="flex items-center gap-3">
+                        <Loader2 className="h-5 w-5 animate-spin text-primary" strokeWidth={1.5} />
+                        <span className="font-mono text-[11px] tracking-widest text-muted-foreground">
+                            Initializing job...
+                        </span>
+                    </div>
+                    {/* The first poll is the likeliest one to be refused, and it
+                        is the one with no job to render around. Without this the
+                        spinner just sits there. */}
+                    {isThrottled && (
+                        <span
+                            role="status"
+                            className="font-mono text-[10px] tracking-widest text-muted-foreground/60"
+                        >
+                            checking less often — busy network
+                        </span>
+                    )}
                 </CardContent>
             </Card>
         );
@@ -194,6 +238,14 @@ export function JobStatus({ jobId }: JobStatusProps) {
                 <span className="font-mono text-[10px] tracking-widest text-muted-foreground/60">
                     job:{jobId.slice(0, 8)}
                 </span>
+                {isThrottled && (
+                    <span
+                        role="status"
+                        className="font-mono text-[10px] tracking-widest text-muted-foreground/60"
+                    >
+                        checking less often — busy network
+                    </span>
+                )}
                 {statusConfig && (
                     <span
                         className="inline-flex items-center gap-1.5 rounded-full border px-3 py-1 font-mono text-[10px] tracking-widest"

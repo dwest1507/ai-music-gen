@@ -157,7 +157,7 @@ class ACEStepClient:
                 timeout=10.0,
             )
             return self._unwrap(resp)
-        except (httpx.TimeoutException, httpx.ConnectError):
+        except httpx.TransportError:
             raise ACEStepError("Cannot reach music generation service.", 503)
 
     async def list_models(self) -> Any:
@@ -169,7 +169,7 @@ class ACEStepClient:
                 timeout=DEFAULT_TIMEOUT,
             )
             return self._unwrap(resp)
-        except (httpx.TimeoutException, httpx.ConnectError):
+        except httpx.TransportError:
             raise ACEStepError("Cannot reach music generation service.", 503)
 
     async def get_random_sample(self, params: dict[str, Any] | None = None) -> Any:
@@ -182,7 +182,7 @@ class ACEStepClient:
                 timeout=DEFAULT_TIMEOUT,
             )
             return self._unwrap(resp)
-        except (httpx.TimeoutException, httpx.ConnectError):
+        except httpx.TransportError:
             raise ACEStepError("Cannot reach music generation service.", 503)
 
     async def format_input(self, params: dict[str, Any]) -> Any:
@@ -195,5 +195,5 @@ class ACEStepClient:
                 timeout=DEFAULT_TIMEOUT,
             )
             return self._unwrap(resp)
-        except (httpx.TimeoutException, httpx.ConnectError):
+        except httpx.TransportError:
             raise ACEStepError("Cannot reach music generation service.", 503)

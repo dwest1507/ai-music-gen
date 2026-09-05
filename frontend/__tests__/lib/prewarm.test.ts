@@ -72,6 +72,47 @@ describe('startPrewarm', () => {
         expect(apiFetch).toHaveBeenCalledTimes(1);
     });
 
+    it('wakes the GPU again when a visitor returns after the ceiling', async () => {
+        // The ceiling stops paying for someone who walked away; it must not
+        // decide they are gone for good. Staying detached meant the first lull
+        // disabled prewarm for the life of the tab, so a visitor who came back
+        // and generated a song paid a full cold start.
+        stop = startPrewarm();
+        window.dispatchEvent(new Event('pointermove'));
+        await vi.advanceTimersByTimeAsync(PREWARM_CEILING_MS * 2);
+        vi.mocked(apiFetch).mockClear();
+
+        window.dispatchEvent(new Event('pointermove'));
+
+        expect(apiFetch).toHaveBeenCalledWith('/api/warmup', { method: 'POST' });
+    });
+
+    it('reports the GPU as cold once it stops holding it warm', async () => {
+        // The form labels its wait from this answer. Leaving the last warm reply
+        // standing after we let the container go promises a wait we can no
+        // longer deliver.
+        const onStatus = vi.fn();
+        stop = startPrewarm(onStatus);
+        window.dispatchEvent(new Event('pointermove'));
+
+        await vi.advanceTimersByTimeAsync(PREWARM_CEILING_MS * 2);
+
+        expect(onStatus).toHaveBeenLastCalledWith({ warm: false });
+    });
+
+    it('stops listening once the caller cleans up', async () => {
+        // Re-arming at the ceiling must not outlive the component that started it.
+        stop = startPrewarm();
+        window.dispatchEvent(new Event('pointermove'));
+        await vi.advanceTimersByTimeAsync(PREWARM_CEILING_MS * 2);
+        stop();
+        vi.mocked(apiFetch).mockClear();
+
+        window.dispatchEvent(new Event('pointermove'));
+
+        expect(apiFetch).not.toHaveBeenCalled();
+    });
+
     it('gives up on an idle visitor once the ceiling passes', async () => {
         // Without this, a tab left open and visible on a second monitor holds a
         // GPU warm all day.

@@ -157,3 +157,50 @@ describe('JobStatus', () => {
         });
     });
 });
+
+describe('JobStatus polling under rate limiting', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+    });
+
+    afterEach(() => {
+        vi.useRealTimers();
+    });
+
+    /**
+     * The limiter keys on client IP, so a tab does not own the 60/min allowance
+     * for /api/jobs — two viewers behind one NAT reach it between them. The
+     * refusal used to be swallowed, which kept the tab polling at exactly the
+     * rate that caused it and left the job looking hung until the ten-minute
+     * timeout.
+     */
+    it('tells the viewer it is backing off when the backend refuses a poll', async () => {
+        const refusal = Object.assign(new Error('API Error 429'), { status: 429 });
+        mockApiFetch.mockRejectedValue(refusal);
+
+        render(<JobStatus jobId="abc123def456" />);
+
+        expect(await screen.findByRole('status')).toHaveTextContent(/checking less often/i);
+    });
+
+    it('waits out the limiter window instead of retrying into it', async () => {
+        vi.useFakeTimers();
+        const refusal = Object.assign(new Error('API Error 429'), { status: 429 });
+        mockApiFetch
+            .mockRejectedValueOnce(refusal)
+            .mockResolvedValue({ task_id: 'abc123def456', status: 'processing' });
+
+        render(<JobStatus jobId="abc123def456" />);
+        await vi.advanceTimersByTimeAsync(10);
+        expect(mockApiFetch).toHaveBeenCalledTimes(1);
+
+        // The ordinary cadence is 2s. Retrying on it after a refusal just spends
+        // the next allowance on another refusal.
+        await vi.advanceTimersByTimeAsync(5000);
+        expect(mockApiFetch).toHaveBeenCalledTimes(1);
+
+        // Past the limiter's one-minute window's worth of back-off, polling resumes.
+        await vi.advanceTimersByTimeAsync(11000);
+        expect(mockApiFetch).toHaveBeenCalledTimes(2);
+    });
+});

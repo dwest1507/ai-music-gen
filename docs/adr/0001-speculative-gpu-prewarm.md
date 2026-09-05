@@ -30,16 +30,25 @@ warm ping is free insurance that keeps scaling to zero available as a future opt
 ## Consequences
 
 A public endpoint now spends money on behalf of anonymous callers, so it is defended in
-depth: an in-memory dedupe collapses repeat calls inside one warm window, the client
-heartbeat is visibility-gated and capped so a forgotten open tab cannot hold a GPU
-indefinitely, and a global daily budget bounds the worst case. Modal's own spend limit
+depth: an in-memory dedupe collapses repeat calls inside one warm window — including
+those arriving while the wake it is deduplicating is still in flight, which is the burst
+worth collapsing — the client heartbeat is visibility-gated and capped so a forgotten
+open tab cannot hold a GPU indefinitely, and a global budget over the calendar month
+bounds the worst case. The period matches Modal's billing period deliberately: a rolling
+thirty-day window would let two full allowances land inside one bill. Modal's own spend limit
 sits underneath as an independent backstop — but note its failure mode is that all
 workloads *stop*, so exhausting it takes the site down rather than degrading it. The
 application-layer defences, not the spend limit, are what protect availability.
 
-The dedupe counter and the daily budget live in process memory. This is a deliberate
+The dedupe counter and the monthly budget live in process memory. This is a deliberate
 reading of NFR-7 ("backend stateless — no filesystem state"): no filesystem is touched,
 but the backend is no longer strictly stateless. **It is therefore only correct while
 the backend runs as a single instance.** Adding a second Railway replica silently halves
 the effectiveness of both the dedupe and the budget, with no error to warn us. Scaling
 out requires moving this state to a shared store first.
+
+The cap on the heartbeat stands the prewarm *down* rather than switching it off: it
+stops paying for a visitor who walked away, then re-arms for their next interaction and
+reports the GPU as cold in the meantime. Treating the first lull as permanent would have
+disabled prewarm for the life of the tab while the UI went on promising a wait it could
+no longer deliver — worse than never having warmed at all.

@@ -397,20 +397,34 @@ async def warmup(request: Request, response: Response):
         return {"warm": False}
 
     client = _get_client(request)
+    # Reserved before the await, not after: the health check waits ten seconds and
+    # prewarm is public, so recording on completion would let a burst of callers
+    # all pass the checks above and each wake upstream. See WarmState.begin_dispatch.
+    warm_state.begin_dispatch()
+    warm = False
     try:
         await client.health_check()
+        warm = True
     except ACEStepError:
-        warm_state.record_dispatch(warm=False)
         # Not an error worth surfacing. A cold container takes far longer to
         # answer than the health check waits, so a failure here is the normal
         # cold path: Modal starts booting the moment the request reaches its
         # ingress, whether or not we stay for the reply. The visitor has not
         # asked for anything yet, so there is nothing to report and nothing to
         # retry — they pay Modal wake later only if they submit a Task.
-        return {"warm": False}
+        pass
+    except Exception:
+        # Prewarm is speculative and the visitor has asked for nothing, so no
+        # failure here is worth a 500. Anything the client did not convert — a
+        # connection dropped mid-read by a container on its way to zero, say —
+        # lands here and is reported as cold, like any other unanswered wake.
+        logger.exception("Prewarm failed with an unconverted error; reporting cold")
+    finally:
+        # In the finally block so the reservation is always settled: leaking an
+        # in-flight count would pin last_known_warm to False for the process's life.
+        warm_state.complete_dispatch(warm=warm)
 
-    warm_state.record_dispatch(warm=True)
-    return {"warm": True}
+    return {"warm": warm}
 
 
 @router.get("/models")
