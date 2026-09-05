@@ -13,7 +13,7 @@ This repository follows **spec-driven development**. `SPEC.md` is the single sou
 
 ## Project Overview
 
-AI Music Gen is a web application for generating music via the ACE-Step API (hosted on Modal GPU infrastructure). The architecture is a **stateless proxy**: the FastAPI backend handles CORS, rate limiting, session management, and validation, then proxies requests to the Modal API. No persistent state is stored in the backend.
+AI Music Gen is a web application for generating music via the ACE-Step API (hosted on Modal GPU infrastructure). The architecture is a **stateless proxy**: the FastAPI backend handles CORS, rate limiting, session management, and validation, then proxies requests to the Modal API. Nothing is persisted to disk or to a database; the one exception is in-memory GPU warm state, which bounds prewarm spend and is deliberately allowed to be lost on restart.
 
 **Deployment:** Frontend → Vercel, Backend → Railway, Inference → Modal (GPU)
 
@@ -65,7 +65,8 @@ Browser → Next.js (Vercel, port 3000)
 
 - **Entry:** `app/main.py` — FastAPI app, CORS middleware, lifespan management
 - **Config:** `app/core/config.py` — Pydantic Settings, reads from env
-- **Rate limiting:** `app/core/limiter.py` — slowapi, key = session cookie → IP fallback
+- **Rate limiting:** `app/core/limiter.py` — slowapi, keyed on client IP. Deliberately *not* the session cookie: the client supplies it, so rotating it minted a fresh allowance per request
+- **Warm state:** `app/core/warm_state.py` — in-memory dedupe window and monthly warm budget for GPU prewarm. Process-local, so correct only while the backend runs as a single instance (see `docs/adr/0001-speculative-gpu-prewarm.md`)
 - **Service:** `app/services/acestep_client.py` — all Modal API calls (httpx AsyncClient, HTTP/2, shared lifecycle)
 - **Routes:** `app/api/routes/generation.py` — all `/api/*` endpoints
 
@@ -76,6 +77,7 @@ Key endpoints and their rate limits:
 | `GET /api/jobs/{task_id}` | 60/min |
 | `GET /api/audio/{task_id}` | 20/min |
 | `GET /api/examples/random` | 10/min |
+| `POST /api/warmup` | 10/min |
 
 The `ACEStepClient` is instantiated once at startup (lifespan), shared across requests, and closed on shutdown.
 
@@ -90,6 +92,7 @@ The `ACEStepClient` is instantiated once at startup (lifespan), shared across re
 - **Audio:** `src/components/AudioPlayer.tsx` — wavesurfer.js waveform + playback
 - **Layout:** `src/components/NavBar.tsx`, `src/components/layout/` — sticky header, ambient background layer, global footer
 - **API client:** `src/lib/api.ts` — typed fetch wrapper with Zod validation and `ApiError` class
+- **Prewarm:** `src/lib/prewarm.ts` — wakes the GPU on the visitor's first interaction, then holds it with a visibility-gated, capped heartbeat. See SPEC.md FR-16/FR-17 and `docs/adr/0001-speculative-gpu-prewarm.md`
 - **Design system:** tokens live in `src/app/globals.css` and mirror the davidwest.dev portfolio (near-black surfaces, `#0ea5e9` accent, Inter, mono micro-labels). Consume semantic tokens (`text-primary`, `text-muted-foreground`, `.field-input`, `.surface-card`) instead of hard-coded hex. See SPEC.md §5.3.3.
 
 ### Versioning
@@ -104,8 +107,14 @@ Release Please manages unified versioning across `package.json`, `frontend/packa
 
 ## Testing Policy
 
-**This repository requires 100% test coverage.** Every new feature, endpoint, or component must include corresponding tests before it can be merged.
+**Tests must verify behavior through public interfaces, not implementation details.** A
+test that breaks when you rename an internal function was testing the wrong thing.
 
-- Backend: all new routes, service methods, and business logic must have pytest coverage
-- Frontend: all new components and API client functions must have Vitest coverage
-- Never merge a change that reduces coverage below 100%
+- Build new work test-first — one behavior, one test, one implementation, then repeat.
+  Writing all the tests up front produces tests of imagined behavior.
+- Cover what matters: critical user journeys, non-obvious logic, and the defensive
+  branches that are hard to exercise by hand (rate limiting, budget exhaustion, error
+  paths). Not every getter.
+- Prefer asserting through the public surface — an HTTP endpoint, a rendered component —
+  over reaching into internal objects.
+- **There is no coverage percentage gate.** Coverage is a diagnostic, not a target.

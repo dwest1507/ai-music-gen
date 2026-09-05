@@ -3,12 +3,15 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, field_validator
 from typing import Optional
 import json
+import logging
 import secrets
 import random
 from pathlib import Path
 from app.core.config import settings
 from app.core.limiter import limiter
 from app.services.acestep_client import ACEStepClient, ACEStepError
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 SESSION_COOKIE_NAME = "session_id"
@@ -368,6 +371,60 @@ async def download_audio(
         media_type=content_type,
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+@router.post("/warmup")
+@limiter.limit("10/minute")
+async def warmup(request: Request, response: Response):
+    """Dispatch a wake to the GPU ahead of the user asking for a song.
+
+    Modal wake dominates the wait for a first song and cannot overlap with
+    anything, because nothing contacts the GPU until a Task is submitted. The
+    frontend calls this on the visitor's first genuine interaction so the wake
+    runs while they read the page and fill the form. See SPEC.md FR-16.
+    """
+    warm_state = request.app.state.warm_state
+
+    if warm_state.is_within_dedupe_window():
+        return {"warm": warm_state.last_known_warm}
+
+    if not warm_state.has_budget_remaining():
+        # Report cold rather than the last known answer: the dedupe window has
+        # lapsed, so the container may have scaled down since we last looked and
+        # we are declining to find out. Promising a warm GPU we have not checked
+        # would set the visitor up for a wait the UI told them was not coming.
+        logger.warning("Prewarm declined: monthly warm budget exhausted")
+        return {"warm": False}
+
+    client = _get_client(request)
+    # Reserved before the await, not after: the health check waits ten seconds and
+    # prewarm is public, so recording on completion would let a burst of callers
+    # all pass the checks above and each wake upstream. See WarmState.begin_dispatch.
+    warm_state.begin_dispatch()
+    warm = False
+    try:
+        await client.health_check()
+        warm = True
+    except ACEStepError:
+        # Not an error worth surfacing. A cold container takes far longer to
+        # answer than the health check waits, so a failure here is the normal
+        # cold path: Modal starts booting the moment the request reaches its
+        # ingress, whether or not we stay for the reply. The visitor has not
+        # asked for anything yet, so there is nothing to report and nothing to
+        # retry — they pay Modal wake later only if they submit a Task.
+        pass
+    except Exception:
+        # Prewarm is speculative and the visitor has asked for nothing, so no
+        # failure here is worth a 500. Anything the client did not convert — a
+        # connection dropped mid-read by a container on its way to zero, say —
+        # lands here and is reported as cold, like any other unanswered wake.
+        logger.exception("Prewarm failed with an unconverted error; reporting cold")
+    finally:
+        # In the finally block so the reservation is always settled: leaking an
+        # in-flight count would pin last_known_warm to False for the process's life.
+        warm_state.complete_dispatch(warm=warm)
+
+    return {"warm": warm}
 
 
 @router.get("/models")

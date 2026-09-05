@@ -8,24 +8,25 @@ import { Loader2, CheckCircle2, XCircle, AlertCircle, Clock, Activity, Hash, Fil
 import { AudioPlayer } from "@/components/AudioPlayer";
 import { Badge } from "@/components/ui/badge";
 
+// Personality, kept beneath the phase label rather than standing in for it.
+// The card header always states the true phase and elapsed time; these rotate
+// underneath.
+/**
+ * How long to wait after the backend refuses a poll.
+ *
+ * Long enough to clear the one-minute window the limiter counts over, so the
+ * back-off actually ends the collision instead of retrying into it.
+ */
+const THROTTLED_POLL_MS = 15000;
+
 const GENERATING_MESSAGES = [
-    "Generating Music...",
-    "Now the AI is doing its thing...",
-    "Longer prompts take more time to process...",
-    "The model is crafting your audio, note by note...",
-    "Still generating... this is the hard part...",
-    "Composing, mixing, mastering... all at once...",
-    "Your prompt was pretty complex, huh?",
-    "The AI is really thinking about this one...",
+    "Composing, mixing, mastering... all at once.",
+    "The model is crafting your audio, note by note.",
+    "Longer prompts take more time to process.",
+    "Did you use a lot of lyrics? That's probably why.",
+    "Real-time music synthesis, minus the real-time part.",
+    "The AI has excellent taste and refuses to rush.",
     "Fine. It's being creative. Let it cook.",
-    "A great song takes time. Even for robots.",
-    "Did you use a lot of lyrics? That's probably why...",
-    "The GPU is sweating a little, not gonna lie...",
-    "We're talking real-time music synthesis here...",
-    "Beethoven took years. This'll take minutes. Maybe.",
-    "The AI has excellent taste and refuses to rush...",
-    "Still running... have you tried a shorter prompt?",
-    "I mean, it IS generating something spectacular...",
     "Any minute now...",
 ];
 
@@ -66,10 +67,13 @@ export function JobStatus({ jobId }: JobStatusProps) {
     const [isPolling, setIsPolling] = useState(true);
     const [generatingMessageIndex, setGeneratingMessageIndex] = useState(0);
     const generatingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+    const [elapsedSeconds, setElapsedSeconds] = useState(0);
+    const [isThrottled, setIsThrottled] = useState(false);
 
     useEffect(() => {
         let timeoutId: NodeJS.Timeout;
         let isMounted = true;
+        let throttledUntil = 0;
         const startTime = Date.now();
         const MAX_POLLING_TIME = 10 * 60 * 1000;
 
@@ -88,6 +92,7 @@ export function JobStatus({ jobId }: JobStatusProps) {
                 if (!isMounted) return;
 
                 setJob(data);
+                setIsThrottled(false);
                 if (data.status === "completed" || data.status === "failed") {
                     setIsPolling(false);
                     return;
@@ -96,18 +101,40 @@ export function JobStatus({ jobId }: JobStatusProps) {
                 console.error("Polling error:", err);
                 if (!isMounted) return;
 
-                if (err instanceof Error && "status" in err && (err as { status: number }).status === 404) {
+                const status =
+                    err instanceof Error && "status" in err
+                        ? (err as { status: number }).status
+                        : 0;
+
+                if (status === 404) {
                     setError("Job not found");
                     setIsPolling(false);
                     return;
                 }
+
+                if (status === 429) {
+                    // The limiter keys on client IP, so a tab does not own the
+                    // 60/min allowance — two viewers behind one NAT reach it
+                    // between them. Swallowing the refusal kept the tab polling
+                    // at the rate that caused it and left the job looking hung
+                    // until the ten-minute timeout. Back off and say so instead.
+                    throttledUntil = Date.now() + THROTTLED_POLL_MS;
+                    setIsThrottled(true);
+                } else {
+                    setIsThrottled(false);
+                }
             }
 
+            // Capped at 5s. Modal wake alone routinely pushes a first song past
+            // two minutes, so the old 10s tier meant a finished track could sit
+            // unnoticed for ten seconds at exactly the moment the wait ended.
+            // The 60/min rate limit leaves ample room for this.
             let nextDelay = 2000;
-            if (elapsed > 120000) {
-                nextDelay = 10000;
-            } else if (elapsed > 60000) {
+            if (elapsed > 60000) {
                 nextDelay = 5000;
+            }
+            if (Date.now() < throttledUntil) {
+                nextDelay = THROTTLED_POLL_MS;
             }
 
             if (isPolling && isMounted) {
@@ -124,6 +151,13 @@ export function JobStatus({ jobId }: JobStatusProps) {
             clearTimeout(timeoutId);
         };
     }, [jobId, isPolling]);
+
+    useEffect(() => {
+        const isActive = job?.status === "queued" || job?.status === "processing";
+        if (!isActive) return;
+        const tick = setInterval(() => setElapsedSeconds((s) => s + 1), 1000);
+        return () => clearInterval(tick);
+    }, [job?.status]);
 
     useEffect(() => {
         const isActive = job?.status === "queued" || job?.status === "processing";
@@ -162,11 +196,24 @@ export function JobStatus({ jobId }: JobStatusProps) {
     if (!job) {
         return (
             <Card className="w-full max-w-2xl mx-auto">
-                <CardContent className="flex items-center justify-center gap-3 py-10 pt-6">
-                    <Loader2 className="h-5 w-5 animate-spin text-primary" strokeWidth={1.5} />
-                    <span className="font-mono text-[11px] tracking-widest text-muted-foreground">
-                        Initializing job...
-                    </span>
+                <CardContent className="flex flex-col items-center justify-center gap-2 py-10 pt-6">
+                    <div className="flex items-center gap-3">
+                        <Loader2 className="h-5 w-5 animate-spin text-primary" strokeWidth={1.5} />
+                        <span className="font-mono text-[11px] tracking-widest text-muted-foreground">
+                            Initializing job...
+                        </span>
+                    </div>
+                    {/* The first poll is the likeliest one to be refused, and it
+                        is the one with no job to render around. Without this the
+                        spinner just sits there. */}
+                    {isThrottled && (
+                        <span
+                            role="status"
+                            className="font-mono text-[10px] tracking-widest text-muted-foreground/60"
+                        >
+                            checking less often — busy network
+                        </span>
+                    )}
                 </CardContent>
             </Card>
         );
@@ -191,6 +238,14 @@ export function JobStatus({ jobId }: JobStatusProps) {
                 <span className="font-mono text-[10px] tracking-widest text-muted-foreground/60">
                     job:{jobId.slice(0, 8)}
                 </span>
+                {isThrottled && (
+                    <span
+                        role="status"
+                        className="font-mono text-[10px] tracking-widest text-muted-foreground/60"
+                    >
+                        checking less often — busy network
+                    </span>
+                )}
                 {statusConfig && (
                     <span
                         className="inline-flex items-center gap-1.5 rounded-full border px-3 py-1 font-mono text-[10px] tracking-widest"
@@ -217,11 +272,18 @@ export function JobStatus({ jobId }: JobStatusProps) {
                         style={{ color: statusConfig?.color ?? "#8a8f98" }}
                     />
                     <span style={{ color: statusConfig?.color ?? "#ededef" }}>
-                        {(job.status === "queued" || job.status === "processing") && GENERATING_MESSAGES[generatingMessageIndex]}
+                        {(job.status === "queued" || job.status === "processing") &&
+                            `Generating · ${elapsedSeconds}s`}
                         {job.status === "completed" && "Generation Complete!"}
                         {job.status === "failed" && "Generation Failed"}
                     </span>
                 </CardTitle>
+
+                {(job.status === "queued" || job.status === "processing") && (
+                    <CardDescription className="mt-1 font-mono text-[10px] tracking-widest">
+                        {GENERATING_MESSAGES[generatingMessageIndex]}
+                    </CardDescription>
+                )}
 
                 {job.metadata && (job.metadata.prompt || job.metadata.genre) && (
                     <CardDescription className="mt-1 line-clamp-2 text-xs italic">

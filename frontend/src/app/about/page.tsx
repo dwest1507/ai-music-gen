@@ -46,7 +46,7 @@ const TECH_STACK = [
     subtitle: "FastAPI on Railway",
     accentColor: "#7c3aed",
     description:
-      "A stateless HTTP proxy that sits between the browser and the Modal inference layer. All requests are validated with Pydantic, rate-limited per session with slowapi (5 generations/min), and routed to the upstream ACE-Step API over an HTTP/2 persistent connection managed by httpx.AsyncClient. Audio is streamed back to the client via FastAPI StreamingResponse, keeping the internal Modal URL and API key away from the browser at all times.",
+      "A stateless HTTP proxy that sits between the browser and the Modal inference layer. All requests are validated with Pydantic, rate-limited per client IP with slowapi (5 generations/min), and routed to the upstream ACE-Step API over an HTTP/2 persistent connection managed by httpx.AsyncClient. Audio is streamed back to the client via FastAPI StreamingResponse, keeping the internal Modal URL and API key away from the browser at all times.",
     tags: [
       "Python",
       "FastAPI",

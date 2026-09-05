@@ -9,25 +9,21 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AlertCircle, HelpCircle, Music, Sparkles } from "lucide-react";
 import { z } from "zod";
 
+// Personality, kept deliberately subordinate to the phase label. These rotate
+// beneath the button; the button itself always states the true phase and elapsed
+// time. Nothing here claims the backend is asleep — it is always-on now, and the
+// wait is entirely the GPU coming back from scale-to-zero.
 const LOADING_MESSAGES = [
-    "Starting Generation...",
-    "Waiting on the backend to warm up...",
-    "The backend goes idle after 5 mins of inactivity...",
-    "I did this to save money...",
+    "The GPU scales to zero between visits. This is that.",
+    "Cheaper than leaving an A100 idling. Slower, too.",
+    "Loading two billion parameters back into memory...",
     "I'm not made of money...",
-    "After all, this app is free...",
-    "So quit your complaining...",
     "GPUs don't grow on trees, you know...",
-    "But yeah, this is taking a while...",
-    "Loading... loading... still loading...",
-    "The AI is composing a masterpiece, OK?",
-    "Please enjoy this moment of zen...",
-    "Doo doo doo...",
-    "Still here? You must really want this song...",
-    "The servers are literally spinning up...",
-    "Almost there... probably...",
-    "Your patience is admirable, truly...",
-    "Any minute now...",
+    "After all, this app is free...",
+    "Restoring a memory snapshot. Genuinely.",
+    "A great song takes time. Even for robots.",
+    "Beethoven took years. This'll take a minute.",
+    "Any second now...",
 ];
 
 const generateSchema = z.object({
@@ -59,9 +55,11 @@ function Label({ children, htmlFor }: { children: React.ReactNode; htmlFor?: str
 
 interface MusicGeneratorFormProps {
     onJobCreated: (jobId: string) => void;
+    /** Whether prewarm found the GPU already up. null while still unknown. */
+    gpuWarm?: boolean | null;
 }
 
-export function MusicGeneratorForm({ onJobCreated }: MusicGeneratorFormProps) {
+export function MusicGeneratorForm({ onJobCreated, gpuWarm = null }: MusicGeneratorFormProps) {
     const [prompt, setPrompt] = useState("");
     const [genre, setGenre] = useState("");
     const [lyrics, setLyrics] = useState("");
@@ -73,9 +71,19 @@ export function MusicGeneratorForm({ onJobCreated }: MusicGeneratorFormProps) {
     const [error, setError] = useState<string | null>(null);
     const [lastSubmitTime, setLastSubmitTime] = useState(0);
     const [loadingMessageIndex, setLoadingMessageIndex] = useState(0);
+    const [elapsedSeconds, setElapsedSeconds] = useState(0);
 
     // Either async action locks the form; only generation swaps the button label.
     const isBusy = isLoading || isLoadingExample;
+
+    // Counts upward rather than promising a range. A snapshot rebuild takes
+    // roughly twice an ordinary wake, so any figure we promised would sometimes
+    // be a figure we broke.
+    useEffect(() => {
+        if (!isLoading) return;
+        const tick = setInterval(() => setElapsedSeconds((s) => s + 1), 1000);
+        return () => clearInterval(tick);
+    }, [isLoading]);
 
     useEffect(() => {
         if (!isLoading) return;
@@ -120,6 +128,7 @@ export function MusicGeneratorForm({ onJobCreated }: MusicGeneratorFormProps) {
 
         setIsLoading(true);
         setLoadingMessageIndex(0);
+        setElapsedSeconds(0);
         setError(null);
         setLastSubmitTime(now);
 
@@ -313,8 +322,16 @@ export function MusicGeneratorForm({ onJobCreated }: MusicGeneratorFormProps) {
                         disabled={isBusy}
                         isLoading={isLoading}
                     >
-                        {isLoading ? LOADING_MESSAGES[loadingMessageIndex] : "Generate Music"}
+                        {isLoading
+                            ? `${gpuWarm === false ? "Waking GPU" : "Submitting"} · ${elapsedSeconds}s`
+                            : "Generate Music"}
                     </Button>
+
+                    {isLoading && (
+                        <p className="text-center font-mono text-[10px] leading-relaxed tracking-widest text-muted-foreground">
+                            {LOADING_MESSAGES[loadingMessageIndex]}
+                        </p>
+                    )}
                 </form>
             </CardContent>
         </Card>
