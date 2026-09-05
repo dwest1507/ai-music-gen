@@ -447,6 +447,19 @@ Deployments pull from the `main` branch upon successful CI checks.
 #### 5.4.3 GitHub Repository Configuration
 Branch protection rules on `main` enforce that no PRs can be merged without passing status checks for both `Backend CI` and `Frontend CI`.
 
+#### 5.4.4 Dependency Management (Dependabot)
+`.github/dependabot.yml` configures weekly version updates plus GitHub's automatic security updates for three ecosystems:
+
+| Ecosystem | Directory | Manifest / lockfile | Labels |
+|---|---|---|---|
+| `uv` | `/backend` | `pyproject.toml` + `uv.lock` | `dependencies`, `python` |
+| `npm` | `/frontend` | `package.json` + `package-lock.json` | `dependencies`, `javascript` |
+| `github-actions` | `/` | `.github/workflows/*.yml` | `dependencies`, `github-actions` |
+
+The backend uses the `uv` ecosystem rather than the generic `pip` ecosystem: only `uv` resolves and updates `uv.lock`, which is the file `uv sync --frozen` and the `pip-audit` step in `security.yml` ultimately depend on.
+
+Each ecosystem groups all of its updates into a single pull request (`groups: patterns: ["*"]`) and is capped at 5 open PRs, so routine bumps arrive as one reviewable change per ecosystem instead of one PR per package. Commit messages use the conventional-commit prefixes `build(deps)` / `build(deps-dev)` so Release Please does not treat dependency bumps as features or fixes.
+
 ---
 
 ## 6. Environment Variables
