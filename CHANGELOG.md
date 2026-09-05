@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.11.0](https://github.com/dwest1507/ai-music-gen/compare/ai-music-gen-v0.10.0...ai-music-gen-v0.11.0) (2026-09-05)
+
+
+### Features
+
+* Implement GPU prewarm with budget-aware deduplication ([#65](https://github.com/dwest1507/ai-music-gen/issues/65)) ([a0c5c0f](https://github.com/dwest1507/ai-music-gen/commit/a0c5c0f43ab234d68d3df28a68540fad32d2d68f))
+
+
+### Bug Fixes
+
+* **deps:** patch @humanfs/node advisory and restore Dependabot with uv ([#66](https://github.com/dwest1507/ai-music-gen/issues/66)) ([a34c7ef](https://github.com/dwest1507/ai-music-gen/commit/a34c7ef33f3edd50fd3620d5329ed6560d0109c0))
+
 ## [0.10.0](https://github.com/dwest1507/ai-music-gen/compare/ai-music-gen-v0.9.0...ai-music-gen-v0.10.0) (2026-08-24)
 
 
