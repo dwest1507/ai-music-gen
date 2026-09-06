@@ -2,6 +2,7 @@ import json
 import pytest
 from unittest.mock import MagicMock, patch
 import httpx
+from app.services.acestep_client import ACEStepError
 
 
 @pytest.mark.asyncio
@@ -1038,3 +1039,136 @@ async def test_explicit_duration_is_forwarded(async_client, mock_acestep_client)
     assert response.status_code == 202
 
     assert mock_acestep_client.submit_task.call_args[0][0]["audio_duration"] == 180
+
+
+# ── Two-stage caption (SPEC.md §8.2) ──────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_a_terse_style_prompt_is_enriched_before_generation(
+    async_client, mock_acestep_client
+):
+    """A bare style prompt is expanded into a real caption before it conditions the DiT.
+
+    "country" carries almost no production detail, and we no longer let the LM's CoT
+    fill that gap because it replaced the caption wholesale. Enriching it up front and
+    keeping the result is the controlled version of the same idea.
+    """
+    mock_acestep_client.format_input.return_value = {
+        "caption": "A warm mid-tempo country ballad with acoustic guitar and pedal steel.",
+        "lyrics": "[Instrumental]",
+    }
+    mock_acestep_client.submit_task.return_value = {"task_id": "enriched-task"}
+
+    response = await async_client.post("/api/generate", json={"prompt": "country"})
+    assert response.status_code == 202
+
+    call_args = mock_acestep_client.submit_task.call_args[0][0]
+    assert call_args["prompt"] == (
+        "A warm mid-tempo country ballad with acoustic guitar and pedal steel."
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_detailed_style_prompt_is_left_alone(
+    async_client, mock_acestep_client
+):
+    """A caption that already reads like one is not rewritten, and costs no round-trip.
+
+    Enrichment exists to fill in what a bare genre word leaves out. Running it on a
+    prompt the visitor wrote carefully would put us back where Tier 1 started —
+    paraphrasing their text — and would add an LM call to every generation.
+    """
+    mock_acestep_client.submit_task.return_value = {"task_id": "detailed-task"}
+
+    detailed = (
+        "A brooding synthwave instrumental with analog pads, gated reverb drums, "
+        "and a driving arpeggiated bassline under a slow, wide lead."
+    )
+    response = await async_client.post("/api/generate", json={"prompt": detailed})
+    assert response.status_code == 202
+
+    mock_acestep_client.format_input.assert_not_called()
+    assert mock_acestep_client.submit_task.call_args[0][0]["prompt"] == detailed
+
+
+@pytest.mark.asyncio
+async def test_enrichment_never_sees_the_users_lyrics(
+    async_client, mock_acestep_client
+):
+    """The pre-pass is sent empty lyrics, whatever the visitor wrote.
+
+    format_input runs the same format_sample that regenerates lyrics free-form. Sending
+    it the real lyrics would reintroduce exactly the rewrite FR-21 exists to prevent,
+    just one call earlier.
+    """
+    mock_acestep_client.format_input.return_value = {"caption": "An enriched caption."}
+    mock_acestep_client.submit_task.return_value = {"task_id": "no-lyrics-leak"}
+
+    lyrics = "[Verse]\nWords the visitor wrote themselves"
+    response = await async_client.post(
+        "/api/generate", json={"prompt": "country", "lyrics": lyrics}
+    )
+    assert response.status_code == 202
+
+    sent = mock_acestep_client.format_input.call_args[0][0]
+    assert sent["lyrics"] == ""
+    assert lyrics not in str(sent)
+    # ...and the real lyrics still reach generation untouched.
+    assert mock_acestep_client.submit_task.call_args[0][0]["lyrics"] == lyrics
+
+
+@pytest.mark.asyncio
+async def test_a_failed_enrichment_still_generates(async_client, mock_acestep_client):
+    """Enrichment is an improvement, not a dependency.
+
+    It is a second upstream call on the way to the one the visitor actually asked for,
+    so a failure there must cost them a thinner caption, not their song.
+    """
+    mock_acestep_client.format_input.side_effect = ACEStepError("LM unavailable", 502)
+    mock_acestep_client.submit_task.return_value = {"task_id": "degraded-task"}
+
+    response = await async_client.post(
+        "/api/generate", json={"prompt": "country", "genre": "Country"}
+    )
+    assert response.status_code == 202
+
+    assert mock_acestep_client.submit_task.call_args[0][0]["prompt"] == "Country. country"
+
+
+@pytest.mark.asyncio
+async def test_composed_style_wording_is_not_treated_as_a_bare_label(
+    async_client, mock_acestep_client
+):
+    """Six words naming instruments and a vocal is a description, not a label.
+
+    This is the line the threshold draws. Getting it wrong in this direction would
+    paraphrase text the visitor composed — the failure Tier 1 fixed — so the boundary
+    is asserted rather than left to the constant.
+    """
+    mock_acestep_client.submit_task.return_value = {"task_id": "boundary-task"}
+
+    response = await async_client.post(
+        "/api/generate", json={"prompt": "warm acoustic guitar, gentle male vocals"}
+    )
+    assert response.status_code == 202
+
+    mock_acestep_client.format_input.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_a_malformed_enrichment_response_still_generates(
+    async_client, mock_acestep_client
+):
+    """A response that is not a caption-bearing object degrades like a failure.
+
+    The client unwraps whatever upstream put in `data`, which is not guaranteed to be
+    an object. Reading it must not be the thing that fails the visitor's song.
+    """
+    mock_acestep_client.format_input.return_value = None
+    mock_acestep_client.submit_task.return_value = {"task_id": "malformed-task"}
+
+    response = await async_client.post("/api/generate", json={"prompt": "country"})
+    assert response.status_code == 202
+
+    assert mock_acestep_client.submit_task.call_args[0][0]["prompt"] == "country"

@@ -38,7 +38,9 @@ async def mock_acestep_client():
     client.health_check = AsyncMock(return_value={"status": "ok"})
     client.list_models = AsyncMock()
     client.get_random_sample = AsyncMock()
-    client.format_input = AsyncMock()
+    # Default to a caption-less response so enrichment falls back to the original
+    # prompt; tests that exercise enrichment set their own return_value.
+    client.format_input = AsyncMock(return_value={})
     return client
 
 

@@ -21,7 +21,9 @@ SPEC.md FR-20.
 
 `use_format` is no longer a request field (any value sent is ignored): it made the 5Hz
 LM rewrite the caption and lyrics together, which paraphrased auto-lyrics twice and
-overwrote hand-written ones. The backend now sends it off. See SPEC.md §8.1.
+overwrote hand-written ones. The backend now sends it off. A terse caption (under six words) is instead expanded by a
+separate `/format_input` call that is sent empty lyrics and whose output is kept only as
+the caption, so the expansion can never touch anyone's words. See SPEC.md §8.1.
 
 **Request Body:**
 

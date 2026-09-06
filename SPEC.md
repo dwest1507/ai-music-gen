@@ -137,6 +137,9 @@ Supports optional API key via:
 | FR-20 | User can describe the song's subject matter in a dedicated "topic" field, routed to lyric generation rather than to the style caption | Should |
 | FR-21 | The backend preserves user-supplied lyrics verbatim: no LM rewrite pass is applied to text the user typed | Must |
 | FR-22 | The vocal language the user selects is the language the model is conditioned on; the LM is not free to choose a different one | Must |
+| FR-23 | A style prompt too terse to condition well is expanded into a full caption before generation; a prompt the user composed is left alone | Should |
+| FR-24 | Caption enrichment never fails a generation: any error or malformed response falls back to the user's own caption | Must |
+| FR-25 | On completion the user sees the style caption and the lyrics the model was actually given | Should |
 
 ### 4.2 Non-Functional Requirements
 
@@ -359,11 +362,17 @@ The backend transforms this into the ACE-Step `/release_task` payload:
   three flows can accept that: after `sample_mode` it paraphrases LM output a second
   time, with user lyrics it destroys them (FR-21), and on an instrumental request it
   can return invented lyrics in place of `"[Instrumental]"` and put vocals on a track
-  that asked for none. Caption enrichment is still wanted — under our own control, as
-  the "Two-stage caption" item in §8.2.
+  that asked for none. Caption enrichment is still wanted, and is now done under our own
+  control — see "Two-stage caption" below.
 - `use_cot_caption=False`, `use_cot_language=False` — keeps the caption and the vocal
   language the user chose as the DiT's conditioning (FR-22)
 - `lm_temperature` → `lm_temperature` (default `0.7`, below upstream's `0.85`)
+- The caption is enriched before submission when it is shorter than 6 words (FR-23), via
+  `POST /format_input` carrying the caption and **empty lyrics**, keeping only the
+  returned `caption`. This runs *after* the payload is built so `sample_query` keeps the
+  visitor's own words — an enriched style description is the wrong thing to hand the
+  lyric writer as a subject. Any failure or non-object response falls back to the
+  original caption (FR-24).
 - `duration` → `audio_duration` (only included when explicitly provided; omitted to let LM auto-determine)
 - `thinking` → `thinking`
 - Other fields mapped 1:1
@@ -634,6 +643,22 @@ These improvements were identified during a system design review and implemented
   and making the two agree. This is a workaround for two upstream bugs, tracked in the
   fork: the CoT language is also read under the wrong key (`metadata.get('vocal_language')`
   where the parser writes `language`) at `inference.py:381` and `:828`.
+
+- **Two-stage caption** (FR-23/24): a caption shorter than six words is a bare label
+  rather than a description, and conditions the DiT poorly. Letting `use_cot_caption`
+  fill that gap replaced the caption wholesale, which is what "Single-pass conditioning"
+  above exists to stop — so the expansion happens here instead: one `POST /format_input`
+  call carrying the caption and empty lyrics, keeping only the returned `caption`. The
+  LM still writes the prose, but on text we chose to send, and its output can only land
+  in the caption. The threshold is deliberately low: a thin caption costs quality, while
+  paraphrasing a composed one is the original defect. Costs one extra LM round-trip on
+  terse prompts only, and never fails a generation — enrichment is an improvement, not a
+  dependency.
+- **Showing what the model was given** (FR-25): the completed job displays the style
+  caption under a "Style used" label and the lyrics under a collapsible "Lyrics used".
+  Every step between the form and the model can substitute its own text, and for a long
+  time did so invisibly; surfacing the result is how a regression stays visible. The
+  `[Instrumental]` marker is not lyrics anyone sang, so it gets no section.
 
 ### 8.2 Post-MVP Features
 

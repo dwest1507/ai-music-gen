@@ -169,6 +169,43 @@ def _strip_instrumental_hints(query: str) -> str:
     return re.sub(r"\s{2,}", " ", query).strip()
 
 
+# Below this many words a caption reads as a bare label rather than a description --
+# "country" is one, "Cinematic. An epic orchestral soundtrack" is five. At or above it
+# the visitor has composed something ("warm acoustic guitar, gentle male vocal") that we
+# have no business paraphrasing, so the threshold is deliberately low: a thin caption
+# costs quality, but rewriting a considered one is the very failure Tier 1 fixed.
+# Counted in words rather than characters so one long genre name is not mistaken for a
+# considered description.
+_TERSE_CAPTION_WORD_COUNT = 6
+
+
+async def _enrich_caption(client: ACEStepClient, caption: str) -> str:
+    """Expand a bare caption into the style description the DiT conditions well on.
+
+    Only terse captions are sent. This is the controlled half of what use_cot_caption
+    used to do for free: the LM still writes the expansion, but it happens here, on a
+    caption we chose to send, and its output lands only in the caption.
+    """
+    if len(caption.split()) >= _TERSE_CAPTION_WORD_COUNT:
+        return caption
+
+    try:
+        result = await client.format_input({"prompt": caption, "lyrics": ""})
+        # Read inside the try: the client hands back whatever upstream put in `data`,
+        # which is not guaranteed to be an object, and reading it must not be the
+        # thing that fails the request.
+        enriched = result.get("caption") if isinstance(result, dict) else None
+    except Exception:
+        # An improvement, not a dependency: this is a second upstream call on the way
+        # to the one the visitor asked for, so a failure costs them a thinner caption
+        # rather than their song. Broad on purpose — anything the client did not
+        # convert lands here too, and none of it is worth failing a generation over.
+        logger.warning("Caption enrichment failed; generating with the original caption")
+        return caption
+
+    return enriched.strip() if isinstance(enriched, str) and enriched.strip() else caption
+
+
 def _build_release_task_payload(gen_request: GenerationRequest) -> dict:
     """Transform a GenerationRequest into the ACE-Step /release_task payload.
 
@@ -205,7 +242,8 @@ def _build_release_task_payload(gen_request: GenerationRequest) -> dict:
         # destroys them (SPEC.md FR-21), and on an instrumental request it can return
         # invented lyrics in place of "[Instrumental]" and put vocals on a track that
         # asked for none. Sent explicitly rather than left to the upstream default.
-        # Caption enrichment under our own control is SPEC.md §8.2 "Two-stage caption".
+        # Caption enrichment under our own control is SPEC.md §8.1 "Two-stage caption",
+        # which sends only the caption, with empty lyrics, and keeps only the caption.
         "use_format": False,
         "use_cot_caption": gen_request.use_cot_caption,
         "use_cot_language": gen_request.use_cot_language,
@@ -271,8 +309,12 @@ async def submit_generation(
     """Submit a music generation task to the ACE-Step API."""
     get_session_id(request, response)  # ensure session cookie is set
 
-    payload = _build_release_task_payload(gen_request)
     client = _get_client(request)
+    payload = _build_release_task_payload(gen_request)
+    # After the payload is built, so `sample_query` keeps the visitor's own words:
+    # enrichment produces a style description, which is the wrong thing to hand the
+    # lyric writer as a subject.
+    payload["prompt"] = await _enrich_caption(client, payload["prompt"])
 
     try:
         result = await client.submit_task(payload)
