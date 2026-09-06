@@ -71,7 +71,7 @@ async def test_submit_generation(async_client, mock_acestep_client):
     assert "Cinematic" in call_args["prompt"]
     assert "audio_duration" not in call_args  # duration omitted when not provided
     assert call_args["thinking"] is True
-    assert call_args["use_format"] is True
+    assert call_args["use_format"] is False
     assert call_args["infer_method"] == "ode"
     assert "session_id" in response.cookies
 
@@ -111,14 +111,19 @@ async def test_submit_generation_no_lyrics_enables_sample_mode(
     call_args = mock_acestep_client.submit_task.call_args[0][0]
     assert call_args["lyrics"] == ""
     assert call_args["sample_mode"] is True
-    assert call_args["sample_query"] == "A jazz melody (lyrics in English)"
+    assert call_args["sample_query"] == "A jazz melody"
 
 
 @pytest.mark.asyncio
-async def test_submit_generation_sample_mode_includes_language_hint(
+async def test_submit_generation_pins_language_without_polluting_the_query(
     async_client, mock_acestep_client
 ):
-    """When sample_mode is enabled, sample_query includes the vocal language hint."""
+    """The chosen language is pinned by flags, not by wording appended to the query.
+
+    Upstream lets the LM choose its own language during CoT unless use_cot_language is
+    off, and the codes it then generates are what actually gets sung. Turning the flag
+    off is the fix; the old "(lyrics in Spanish)" suffix only leaked into the caption.
+    """
     mock_acestep_client.submit_task.return_value = {"task_id": "lang-hint-task"}
 
     async_client.cookies.set("session_id", "test-lang-hint-session")
@@ -128,7 +133,9 @@ async def test_submit_generation_sample_mode_includes_language_hint(
 
     call_args = mock_acestep_client.submit_task.call_args[0][0]
     assert call_args["sample_mode"] is True
-    assert call_args["sample_query"] == "A trap rap song (lyrics in Spanish)"
+    assert call_args["vocal_language"] == "es"
+    assert call_args["use_cot_language"] is False
+    assert call_args["sample_query"] == "A trap rap song"
 
 
 @pytest.mark.asyncio
@@ -144,7 +151,7 @@ async def test_submit_generation_sample_query_includes_genre(
 
     call_args = mock_acestep_client.submit_task.call_args[0][0]
     assert call_args["prompt"] == "Metal. a song about rain"
-    assert call_args["sample_query"] == "Metal. a song about rain (lyrics in English)"
+    assert call_args["sample_query"] == "Metal. a song about rain"
 
 
 @pytest.mark.asyncio
@@ -838,3 +845,196 @@ async def test_get_random_example_no_files(async_client, tmp_path):
     with patch("app.api.routes.generation.EXAMPLES_ROOT", new=tmp_path):
         response = await async_client.get("/api/examples/random")
     assert response.status_code == 404
+
+
+# ── Single-pass conditioning (SPEC.md §8.1, FR-20/21/22) ──────────
+
+
+@pytest.mark.asyncio
+async def test_user_lyrics_are_never_sent_for_lm_rewrite(
+    async_client, mock_acestep_client
+):
+    """Lyrics the user typed reach the model verbatim.
+
+    use_format runs upstream's format_sample, which regenerates lyrics free-form and
+    returns its own text in place of the input. That is what made hand-written lyrics
+    come back only partially used.
+    """
+    mock_acestep_client.submit_task.return_value = {"task_id": "verbatim-task"}
+
+    lyrics = "[Verse]\nHe taught me how to drive\n\n[Chorus]\nAnd I never said thanks"
+    response = await async_client.post(
+        "/api/generate", json={"prompt": "A country ballad", "lyrics": lyrics}
+    )
+    assert response.status_code == 202
+
+    call_args = mock_acestep_client.submit_task.call_args[0][0]
+    assert call_args["lyrics"] == lyrics
+    assert call_args["use_format"] is False
+    assert "sample_mode" not in call_args
+
+
+@pytest.mark.asyncio
+async def test_instrumental_request_is_not_sent_for_lm_rewrite(
+    async_client, mock_acestep_client
+):
+    """An instrumental request keeps its [Instrumental] marker.
+
+    format_sample regenerates the lyrics section whatever it was handed, so running it
+    here can return invented lyrics and put vocals on a track that asked for none.
+    """
+    mock_acestep_client.submit_task.return_value = {"task_id": "instrumental-task"}
+
+    response = await async_client.post(
+        "/api/generate", json={"prompt": "A solo piano piece", "instrumental": True}
+    )
+    assert response.status_code == 202
+
+    call_args = mock_acestep_client.submit_task.call_args[0][0]
+    assert call_args["lyrics"] == "[Instrumental]"
+    assert call_args["use_format"] is False
+
+
+@pytest.mark.asyncio
+async def test_auto_lyrics_are_not_paraphrased_twice(
+    async_client, mock_acestep_client
+):
+    """sample_mode already yields a clean caption and lyrics; don't format them again."""
+    mock_acestep_client.submit_task.return_value = {"task_id": "single-pass-task"}
+
+    response = await async_client.post("/api/generate", json={"prompt": "A jazz melody"})
+    assert response.status_code == 202
+
+    call_args = mock_acestep_client.submit_task.call_args[0][0]
+    assert call_args["sample_mode"] is True
+    assert call_args["use_format"] is False
+
+
+@pytest.mark.asyncio
+async def test_topic_drives_lyrics_and_prompt_drives_style(
+    async_client, mock_acestep_client
+):
+    """Subject matter goes to the lyric query; the caption stays a style description.
+
+    An ACE-Step caption describes instrumentation and mood, so a narrative request
+    placed there has no channel to the vocals (SPEC.md FR-20).
+    """
+    mock_acestep_client.submit_task.return_value = {"task_id": "topic-task"}
+
+    response = await async_client.post(
+        "/api/generate",
+        json={
+            "prompt": "warm acoustic guitar, gentle male vocal",
+            "topic": "a father and son's relationship",
+            "genre": "Country",
+        },
+    )
+    assert response.status_code == 202
+
+    call_args = mock_acestep_client.submit_task.call_args[0][0]
+    assert call_args["prompt"] == "Country. warm acoustic guitar, gentle male vocal"
+    assert call_args["sample_query"] == "a father and son's relationship"
+
+
+@pytest.mark.asyncio
+async def test_sample_query_falls_back_to_the_prompt_without_a_topic(
+    async_client, mock_acestep_client
+):
+    """Clients that predate the topic field keep working."""
+    mock_acestep_client.submit_task.return_value = {"task_id": "fallback-task"}
+
+    response = await async_client.post(
+        "/api/generate", json={"prompt": "a song about rain"}
+    )
+    assert response.status_code == 202
+
+    call_args = mock_acestep_client.submit_task.call_args[0][0]
+    assert call_args["sample_query"] == "a song about rain"
+
+
+@pytest.mark.asyncio
+async def test_the_lm_does_not_replace_the_caption_or_choose_the_language(
+    async_client, mock_acestep_client
+):
+    """Both CoT overrides are off, so the DiT is conditioned on what the user chose."""
+    mock_acestep_client.submit_task.return_value = {"task_id": "cot-task"}
+
+    response = await async_client.post(
+        "/api/generate", json={"prompt": "A synthwave track", "vocal_language": "ja"}
+    )
+    assert response.status_code == 202
+
+    call_args = mock_acestep_client.submit_task.call_args[0][0]
+    assert call_args["use_cot_caption"] is False
+    assert call_args["use_cot_language"] is False
+    assert call_args["vocal_language"] == "ja"
+
+
+@pytest.mark.asyncio
+async def test_cot_caption_stays_switchable_for_ab_testing(
+    async_client, mock_acestep_client
+):
+    """LM caption expansion helps a terse prompt, so the lever survives the default."""
+    mock_acestep_client.submit_task.return_value = {"task_id": "ab-task"}
+
+    response = await async_client.post(
+        "/api/generate", json={"prompt": "country", "use_cot_caption": True}
+    )
+    assert response.status_code == 202
+
+    call_args = mock_acestep_client.submit_task.call_args[0][0]
+    assert call_args["use_cot_caption"] is True
+
+
+@pytest.mark.asyncio
+async def test_lm_temperature_defaults_below_upstream(
+    async_client, mock_acestep_client
+):
+    """Upstream defaults to 0.85; a cooler LM follows the prompt more closely."""
+    mock_acestep_client.submit_task.return_value = {"task_id": "temp-task"}
+
+    response = await async_client.post("/api/generate", json={"prompt": "A folk song"})
+    assert response.status_code == 202
+
+    assert mock_acestep_client.submit_task.call_args[0][0]["lm_temperature"] == 0.7
+
+
+@pytest.mark.asyncio
+async def test_instrumental_wording_does_not_silence_a_sung_request(
+    async_client, mock_acestep_client
+):
+    """A style that mentions an instrumental passage must not suppress the vocals.
+
+    Upstream's parse_description_hints scans sample_query for "instrumental", "pure
+    music", "pure instrument", or a trailing "solo", and flips the whole request to
+    instrumental. Only the explicit toggle should be able to do that.
+    """
+    mock_acestep_client.submit_task.return_value = {"task_id": "hint-task"}
+
+    response = await async_client.post(
+        "/api/generate",
+        json={
+            "prompt": "A ballad",
+            "topic": "heartbreak, with an instrumental bridge and a closing guitar solo",
+        },
+    )
+    assert response.status_code == 202
+
+    query = mock_acestep_client.submit_task.call_args[0][0]["sample_query"]
+    assert "instrumental" not in query.lower()
+    assert not query.lower().endswith("solo")
+    assert "heartbreak" in query
+    assert "  " not in query
+
+
+@pytest.mark.asyncio
+async def test_explicit_duration_is_forwarded(async_client, mock_acestep_client):
+    """Without a duration the LM picks one, which can be shorter than the lyrics need."""
+    mock_acestep_client.submit_task.return_value = {"task_id": "duration-task"}
+
+    response = await async_client.post(
+        "/api/generate", json={"prompt": "A long ballad", "duration": 180}
+    )
+    assert response.status_code == 202
+
+    assert mock_acestep_client.submit_task.call_args[0][0]["audio_duration"] == 180

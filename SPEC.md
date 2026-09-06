@@ -97,6 +97,9 @@ Supports optional API key via:
 | `sample_mode` | bool | `false` | Auto-generate via LM from description |
 | `sample_query` | string | `""` | Natural language description for sample mode |
 | `use_format` | bool | `false` | LM-enhance provided caption/lyrics |
+| `use_cot_caption` | bool | `true` | Let the LM replace the caption during CoT reasoning |
+| `use_cot_language` | bool | `true` | Let the LM pick the vocal language during CoT reasoning |
+| `lm_temperature` | float | `0.85` | 5Hz LM sampling temperature |
 | `bpm` | int | null | Tempo (30–300) |
 | `key_scale` | string | `""` | Key/scale (e.g., "C Major") |
 | `time_signature` | string | `""` | Time signature |
@@ -112,7 +115,7 @@ Supports optional API key via:
 
 | ID | Requirement | Priority |
 |----|-------------|----------|
-| FR-1 | User can enter a text prompt describing the music they want | Must |
+| FR-1 | User can enter a text prompt describing the musical style they want (instrumentation, mood, production) | Must |
 | FR-2 | User can select audio duration (30s, 60s, 120s, or custom 10–600s) | Must |
 | FR-3 | User can optionally select a genre | Must |
 | FR-4 | AI auto-generates lyrics by default; user can override with custom lyrics (> 5 non-whitespace chars) or suppress vocals with an "Instrumental only" toggle | Should |
@@ -123,7 +126,7 @@ Supports optional API key via:
 | FR-9 | User can download generated audio files | Must |
 | FR-10 | User can cancel pending/queued generations | Should |
 | FR-11 | System proxies audio downloads through the backend (not exposing Modal URL) | Must |
-| FR-12 | Single unified form: only prompt is required; genre, language, lyrics, and instrumental toggle are optional | Should |
+| FR-12 | Single unified form: only prompt is required; genre, topic, duration, language, lyrics, and instrumental toggle are optional | Should |
 | FR-13 | System provides a "random sample" / "inspire me" feature using `/create_random_sample` | Could |
 | FR-14 | System supports LM-enhanced generation (`thinking=true`) for higher quality output | Should |
 | FR-15 | User can click a button to fill the form with a random example prompt from the curated collection | Should |
@@ -131,6 +134,9 @@ Supports optional API key via:
 | FR-17 | System holds the GPU warm with a heartbeat while the tab is visible, up to a fixed ceiling, then stands down — reporting the GPU as cold and re-arming for the visitor's next interaction | Must |
 | FR-18 | User sees the true phase of their generation (waking GPU vs generating) with elapsed time, rather than messages on a timer | Should |
 | FR-19 | Generated audio is fetched once into the browser and reused for both playback and download | Should |
+| FR-20 | User can describe the song's subject matter in a dedicated "topic" field, routed to lyric generation rather than to the style caption | Should |
+| FR-21 | The backend preserves user-supplied lyrics verbatim: no LM rewrite pass is applied to text the user typed | Must |
+| FR-22 | The vocal language the user selects is the language the model is conditioned on; the LM is not free to choose a different one | Must |
 
 ### 4.2 Non-Functional Requirements
 
@@ -304,7 +310,8 @@ Request body (Pydantic model):
 
 ```json
 {
-  "prompt": "string (required, max 1000 chars)",
+  "prompt": "string (required, max 1000 chars — musical style: instrumentation, mood, production)",
+  "topic": "string (optional, max 1000 chars — what the song is about; drives lyric generation only)",
   "lyrics": "string (optional, max 5000 chars — only sent when user provides > 5 non-whitespace chars)",
   "instrumental": "bool (optional, default false — forces [Instrumental] lyrics on the backend)",
   "duration": "float (optional, 10-300, default null — LM auto-determines when omitted)",
@@ -312,7 +319,9 @@ Request body (Pydantic model):
   "vocal_language": "string (optional, default 'en')",
   "audio_format": "string (optional, 'mp3'|'wav'|'flac', default 'mp3')",
   "thinking": "bool (optional, default true)",
-  "use_format": "bool (optional, default true — LM enhances prompt/lyrics before generation)",
+  "use_cot_caption": "bool (optional, default false — see §8.1 'Single-pass conditioning')",
+  "use_cot_language": "bool (optional, default false — see §8.1 'Single-pass conditioning')",
+  "lm_temperature": "float (optional, 0.0-2.0, default 0.7)",
   "bpm": "int (optional, 30-300)",
   "key_scale": "string (optional)",
   "time_signature": "string (optional)",
@@ -322,7 +331,7 @@ Request body (Pydantic model):
 }
 ```
 
-The frontend sends only `prompt`, `genre`, `lyrics`, `vocal_language`, and `instrumental`. All other parameters use quality-optimized backend defaults.
+The frontend sends only `prompt`, `topic`, `genre`, `duration`, `lyrics`, `vocal_language`, and `instrumental`. All other parameters use quality-optimized backend defaults. `use_format` is not a request field: the backend derives it (see below), because leaving it to the caller is what allowed user lyrics to be paraphrased.
 
 Response (202 Accepted):
 
@@ -335,17 +344,34 @@ Response (202 Accepted):
 ```
 
 The backend transforms this into the ACE-Step `/release_task` payload:
-- `prompt` → `prompt` (prepend genre if provided)
+- `prompt` → `prompt` (prepend genre if provided). This is the **style caption** channel:
+  ACE-Step captions describe instrumentation, timbre, mix, and mood — not subject matter.
+- `topic` → `sample_query` (subject-matter channel, lyric generation only). Never enters
+  the caption, so a narrative request cannot be flattened into a style description.
 - `lyrics` / `instrumental` → `lyrics` (resolution order):
   1. `instrumental=true` → `"[Instrumental]"` (no vocals)
   2. `lyrics` non-empty (user-provided) → use provided lyrics as-is
   3. No lyrics + not instrumental → `lyrics=""` + `sample_mode=True` +
-     `sample_query="{genre-prefixed prompt} (lyrics in {language name})"`
-     (delegates auto-generation to ACE-Step's built-in 5Hz LM; the language name
-     is spelled out because the upstream server treats `"en"` as "no preference")
+     `sample_query` = `topic` when given, else the genre-prefixed prompt
+     (delegates auto-generation to ACE-Step's built-in 5Hz LM)
+- `use_format` → always `False`, sent explicitly rather than left to the upstream
+  default. It regenerates the caption *and* the lyrics in one pass, and none of the
+  three flows can accept that: after `sample_mode` it paraphrases LM output a second
+  time, with user lyrics it destroys them (FR-21), and on an instrumental request it
+  can return invented lyrics in place of `"[Instrumental]"` and put vocals on a track
+  that asked for none. Caption enrichment is still wanted — under our own control, as
+  the "Two-stage caption" item in §8.2.
+- `use_cot_caption=False`, `use_cot_language=False` — keeps the caption and the vocal
+  language the user chose as the DiT's conditioning (FR-22)
+- `lm_temperature` → `lm_temperature` (default `0.7`, below upstream's `0.85`)
 - `duration` → `audio_duration` (only included when explicitly provided; omitted to let LM auto-determine)
 - `thinking` → `thinking`
 - Other fields mapped 1:1
+
+Instrumental trigger words (`instrumental`, `pure music`, `pure instrument`, a trailing
+`solo`) are neutralised in `sample_query` when the user has *not* ticked the instrumental
+box: upstream's `parse_description_hints` scans that string and would otherwise suppress
+vocals because the style description mentioned an instrumental passage.
 
 **Route detail: `GET /api/examples/random`**
 
@@ -586,6 +612,28 @@ These improvements were identified during a system design review and implemented
 - **Frontend Polling Backoff & Timeout**: The `JobStatus` polling mechanism steps its interval down after the first minute and includes an upper-bound timeout to prevent infinite polling. A refused poll (429) backs off past the limiter's one-minute window and tells the viewer it is checking less often — the limiter keys on client IP, so a tab does not own the 60/min allowance and two viewers behind one NAT can reach it between them.
 - **Duplicate Submission Guard**: The frontend generation form includes idempotency and duplicate submission guarding to prevent overlapping expensive inference requests.
 - **ACE-Step Lyrics Auto-Generation**: When a user submits without lyrics (and not instrumental), the backend sets `sample_mode=True` and `sample_query` in the payload, delegating lyrics generation to ACE-Step's built-in 5Hz Language Model. This produces lyrics optimized for music-lyrics coherence and also infers metadata (BPM, key, duration) for fields the user hasn't set.
+- **Single-pass conditioning**: The 5Hz LM is allowed to rewrite the user's text *at most
+  once*, and never text the user typed by hand. Earlier revisions sent `use_format=True`,
+  `use_cot_caption=True`, and `use_cot_language=True` unconditionally, which stacked two or
+  three paraphrase passes between the form and the DiT — the model was conditioned on the
+  last rewrite rather than on anything the visitor wrote. Concretely, upstream
+  `llm_generation_inputs.py` runs `format_sample` after `create_sample` whenever
+  `use_format` is set, so auto-lyrics were paraphrased twice and hand-written lyrics once;
+  and `inference.py:825-828` replaces the DiT caption with the LM's CoT caption whenever
+  `use_cot_caption` is set. Each flag is now derived from what the user actually supplied.
+  `use_cot_caption` is exposed on the request so the LM-expansion behaviour can be
+  A/B-tested without a redeploy; the default is off. `use_format` is not exposed at all:
+  it bundles caption enrichment with a lyric rewrite, so there is no request that wants
+  it.
+- **Language pinning without a fork change**: Upstream never forwards `vocal_language` into
+  the LM's CoT phase (`inference.py:670-700` builds `user_metadata` from bpm/keyscale/
+  timesignature/duration only), so with `use_cot_language=True` the LM picks a language
+  itself and generates the audio semantic codes under that choice — while the DiT lyric
+  encoder is separately conditioned on the user's selection. Sending
+  `use_cot_language=False` sets `skip_language=True` upstream, removing the LM's freedom
+  and making the two agree. This is a workaround for two upstream bugs, tracked in the
+  fork: the CoT language is also read under the wrong key (`metadata.get('vocal_language')`
+  where the parser writes `language`) at `inference.py:381` and `:828`.
 
 ### 8.2 Post-MVP Features
 

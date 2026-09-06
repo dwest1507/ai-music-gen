@@ -11,18 +11,29 @@ Submits a new music generation task.
 1. `instrumental: true` → forces `[Instrumental]` (no vocals)
 2. `lyrics` provided (> 5 non-whitespace chars) → uses the supplied lyrics as-is
 3. No lyrics + not instrumental → the request is sent with `sample_mode: true` and a
-   `sample_query` built from the prompt and vocal language, delegating lyrics writing to
-   ACE-Step's built-in 5Hz language model.
+   `sample_query` taken from `topic` (falling back to the genre-prefixed prompt),
+   delegating lyrics writing to ACE-Step's built-in 5Hz language model.
+
+**Two text channels.** `prompt` is the *style* caption — instrumentation, timbre, mix,
+mood — and `topic` is what the song is *about*. They are kept apart because an ACE-Step
+caption has no channel to the vocals, so subject matter placed there is lost. See
+SPEC.md FR-20.
+
+`use_format` is no longer a request field (any value sent is ignored): it made the 5Hz
+LM rewrite the caption and lyrics together, which paraphrased auto-lyrics twice and
+overwrote hand-written ones. The backend now sends it off. See SPEC.md §8.1.
 
 **Request Body:**
 
-`prompt` is the only required field. The web UI sends just `prompt`, `genre`, `lyrics`,
-`vocal_language`, and `instrumental`; everything else falls back to quality-tuned defaults.
-Omitting `duration` lets the model pick a length that fits the song.
+`prompt` is the only required field. The web UI sends just `prompt`, `topic`, `genre`,
+`duration`, `lyrics`, `vocal_language`, and `instrumental`; everything else falls back to
+quality-tuned defaults. Omitting `duration` lets the model pick a length, which can come
+out shorter than long lyrics need — set it explicitly if lyrics are being cut off.
 
 ```json
 {
   "prompt": "Epic orchestral score",
+  "topic": "a long journey home",
   "lyrics": "Optional lyrics here",
   "instrumental": false,
   "genre": "Soundtrack",
@@ -30,7 +41,9 @@ Omitting `duration` lets the model pick a length that fits the song.
   "duration": 60,
   "audio_format": "mp3",
   "thinking": true,
-  "use_format": true,
+  "use_cot_caption": false,
+  "use_cot_language": false,
+  "lm_temperature": 0.7,
   "bpm": 120,
   "key_scale": "C Major",
   "time_signature": "4/4",

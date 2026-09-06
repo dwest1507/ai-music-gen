@@ -4,6 +4,7 @@ from pydantic import BaseModel, Field, field_validator
 from typing import Optional
 import json
 import logging
+import re
 import secrets
 import random
 from pathlib import Path
@@ -20,8 +21,8 @@ SESSION_COOKIE_NAME = "session_id"
 # backend/app/api/routes/generation.py -> backend/app/api/routes -> backend/app/api -> backend/app -> backend -> project_root
 EXAMPLES_ROOT = Path(__file__).parent.parent.parent.parent / "examples"
 
-# Mapping of vocal_language codes to human-readable names, used to hint
-# the ACE-Step LM about the desired lyrics language in sample_mode.
+# Language codes the form's selector offers. Used to normalise example files onto
+# a value the form can display; the code itself is what upstream is conditioned on.
 _VOCAL_LANGUAGE_NAMES: dict[str, str] = {
     "bn": "Bengali",
     "zh": "Chinese",
@@ -43,14 +44,26 @@ _VOCAL_LANGUAGE_NAMES: dict[str, str] = {
 
 class GenerationRequest(BaseModel):
     prompt: str = Field(..., min_length=1, max_length=1000)
+    # What the song is *about*. Kept out of `prompt` because an ACE-Step caption is a
+    # style description (instrumentation, timbre, mix, mood) — subject matter placed
+    # there has no channel to the vocals. See SPEC.md FR-20.
+    topic: str = Field("", max_length=1000)
     lyrics: str = Field("", max_length=5000)
     duration: Optional[float] = Field(None, ge=10, le=300)
     genre: Optional[str] = None
     vocal_language: str = Field("en")
     audio_format: str = Field("mp3")
     thinking: bool = Field(True)
-    use_format: bool = Field(True)
     instrumental: bool = Field(False)
+    # Off by default: upstream replaces the DiT caption with the LM's own CoT caption
+    # when this is set, discarding what the visitor asked for. Exposed as a field so the
+    # LM-expansion behaviour stays A/B-testable without a redeploy. See SPEC.md §8.1.
+    use_cot_caption: bool = Field(False)
+    # Off by default: upstream never forwards `vocal_language` into the LM's CoT phase,
+    # so leaving this on lets the LM pick its own language for the audio semantic codes
+    # while the DiT is conditioned on the user's choice. See SPEC.md FR-22.
+    use_cot_language: bool = Field(False)
+    lm_temperature: float = Field(0.7, ge=0.0, le=2.0)
     bpm: Optional[int] = Field(None, ge=30, le=300)
     key_scale: Optional[str] = None
     time_signature: Optional[str] = None
@@ -136,8 +149,34 @@ def _normalize_language(value: Optional[str]) -> str:
     return value
 
 
+# Words that make upstream's `parse_description_hints` classify a sample query as
+# instrumental (see acestep/api/server_utils.py). A style description that merely
+# mentions an instrumental passage would otherwise suppress the vocals entirely, so
+# these are neutralised in `sample_query` when the visitor has not asked for
+# instrumental. The explicit checkbox stays the only way to get no vocals.
+_INSTRUMENTAL_HINT_PATTERNS: tuple[re.Pattern[str], ...] = (
+    re.compile(r"\binstrumental\b", re.IGNORECASE),
+    re.compile(r"\bpure music\b", re.IGNORECASE),
+    re.compile(r"\bpure instrument\b", re.IGNORECASE),
+    re.compile(r"\s+solo\s*$", re.IGNORECASE),
+)
+
+
+def _strip_instrumental_hints(query: str) -> str:
+    """Remove wording that would make upstream suppress vocals for a sung request."""
+    for pattern in _INSTRUMENTAL_HINT_PATTERNS:
+        query = pattern.sub(" ", query)
+    return re.sub(r"\s{2,}", " ", query).strip()
+
+
 def _build_release_task_payload(gen_request: GenerationRequest) -> dict:
-    """Transform a GenerationRequest into the ACE-Step /release_task payload."""
+    """Transform a GenerationRequest into the ACE-Step /release_task payload.
+
+    Two channels, deliberately kept apart: `prompt` carries musical style and
+    `sample_query` carries subject matter. The LM flags below are derived rather
+    than forwarded, so the 5Hz LM rewrites the visitor's text at most once and
+    never rewrites text they typed by hand. See SPEC.md §8.1.
+    """
     prompt = gen_request.prompt
     if gen_request.genre:
         prompt = f"{gen_request.genre}. {prompt}"
@@ -149,13 +188,28 @@ def _build_release_task_payload(gen_request: GenerationRequest) -> dict:
     else:
         lyrics = ""
 
+    # Auto-lyrics: no lyrics given and vocals wanted. Upstream's create_sample writes
+    # both the caption and the lyrics from this query.
+    sample_mode = not gen_request.instrumental and not gen_request.lyrics
+
     payload: dict = {
         "prompt": prompt,
         "lyrics": lyrics,
         "thinking": gen_request.thinking,
         "vocal_language": gen_request.vocal_language,
         "audio_format": gen_request.audio_format,
-        "use_format": gen_request.use_format,
+        # use_format runs upstream's format_sample, which regenerates the caption *and*
+        # the lyrics in one pass — the caption enrichment cannot be had without the
+        # lyric rewrite. None of the three flows can accept that rewrite: after
+        # sample_mode it paraphrases LM output a second time, with user lyrics it
+        # destroys them (SPEC.md FR-21), and on an instrumental request it can return
+        # invented lyrics in place of "[Instrumental]" and put vocals on a track that
+        # asked for none. Sent explicitly rather than left to the upstream default.
+        # Caption enrichment under our own control is SPEC.md §8.2 "Two-stage caption".
+        "use_format": False,
+        "use_cot_caption": gen_request.use_cot_caption,
+        "use_cot_language": gen_request.use_cot_language,
+        "lm_temperature": gen_request.lm_temperature,
         "inference_steps": gen_request.inference_steps,
         "batch_size": gen_request.batch_size,
     }
@@ -163,14 +217,13 @@ def _build_release_task_payload(gen_request: GenerationRequest) -> dict:
     if gen_request.duration is not None:
         payload["audio_duration"] = gen_request.duration
 
-    # When no lyrics are provided and it's not instrumental, delegate lyrics
-    # generation to ACE-Step's built-in 5Hz LM via sample_mode.
-    # We include the vocal language in the query because the Modal server
-    # treats "en" as "no preference" and may ignore the vocal_language field.
-    if not gen_request.instrumental and not gen_request.lyrics:
+    if sample_mode:
         payload["sample_mode"] = True
-        lang_name = _VOCAL_LANGUAGE_NAMES.get(gen_request.vocal_language, "English")
-        payload["sample_query"] = f"{prompt} (lyrics in {lang_name})"
+        # Prefer the dedicated topic field. Falling back to the style prompt keeps
+        # older clients working, at the cost of the conflation FR-20 exists to fix.
+        payload["sample_query"] = _strip_instrumental_hints(
+            gen_request.topic or prompt
+        )
 
     if gen_request.bpm is not None:
         payload["bpm"] = gen_request.bpm

@@ -54,8 +54,13 @@ export async function apiFetch<T>(endpoint: string, options: FetchOptions = {}):
 // --- Shared API Types ---
 
 export interface GenerateRequest {
+    /** Musical style: instrumentation, mood, production. Becomes the ACE-Step caption. */
     prompt: string;
+    /** What the song is about. Drives lyric generation only, never the caption. */
+    topic?: string;
     genre?: string;
+    /** Seconds. Omitted lets the 5Hz LM choose, which can cut long lyrics short. */
+    duration?: number;
     lyrics?: string;
     vocal_language?: string;
     instrumental?: boolean;

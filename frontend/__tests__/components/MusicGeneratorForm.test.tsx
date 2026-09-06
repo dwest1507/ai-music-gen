@@ -53,7 +53,7 @@ describe('MusicGeneratorForm', () => {
         render(<MusicGeneratorForm onJobCreated={mockOnJobCreated} />);
 
         expect(screen.getByText('Create Music')).toBeInTheDocument();
-        expect(screen.getByRole('textbox', { name: /Prompt/i })).toBeInTheDocument();
+        expect(screen.getByRole('textbox', { name: /Style/i })).toBeInTheDocument();
         expect(screen.getByRole('textbox', { name: /Lyrics/i })).toBeInTheDocument();
         expect(screen.getByRole('checkbox', { name: /Instrumental only/i })).toBeInTheDocument();
         expect(screen.getByRole('button', { name: /Generate Music/i })).toBeInTheDocument();
@@ -75,7 +75,7 @@ describe('MusicGeneratorForm', () => {
     it('displays validation error for short prompt', async () => {
         render(<MusicGeneratorForm onJobCreated={mockOnJobCreated} />);
 
-        const promptInput = screen.getByRole('textbox', { name: /Prompt/i });
+        const promptInput = screen.getByRole('textbox', { name: /Style/i });
         fireEvent.change(promptInput, { target: { value: 'Hi' } }); // Too short
 
         const submitButton = screen.getByRole('button', { name: /Generate Music/i });
@@ -96,7 +96,7 @@ describe('MusicGeneratorForm', () => {
 
         render(<MusicGeneratorForm onJobCreated={mockOnJobCreated} />);
 
-        fireEvent.change(screen.getByRole('textbox', { name: /Prompt/i }), { target: { value: 'A cool jazz track' } });
+        fireEvent.change(screen.getByRole('textbox', { name: /Style/i }), { target: { value: 'A cool jazz track' } });
 
         fireEvent.click(screen.getByRole('button', { name: /Generate Music/i }));
 
@@ -123,7 +123,7 @@ describe('MusicGeneratorForm', () => {
 
         render(<MusicGeneratorForm onJobCreated={mockOnJobCreated} />);
 
-        fireEvent.change(screen.getByRole('textbox', { name: /Prompt/i }), { target: { value: 'An upbeat pop song' } });
+        fireEvent.change(screen.getByRole('textbox', { name: /Style/i }), { target: { value: 'An upbeat pop song' } });
         fireEvent.change(screen.getByRole('textbox', { name: /Lyrics/i }), { target: { value: 'Hello world, this is a song' } });
 
         fireEvent.click(screen.getByRole('button', { name: /Generate Music/i }));
@@ -140,7 +140,7 @@ describe('MusicGeneratorForm', () => {
 
         render(<MusicGeneratorForm onJobCreated={mockOnJobCreated} />);
 
-        fireEvent.change(screen.getByRole('textbox', { name: /Prompt/i }), { target: { value: 'A lo-fi track' } });
+        fireEvent.change(screen.getByRole('textbox', { name: /Style/i }), { target: { value: 'A lo-fi track' } });
         // 5 non-whitespace chars exactly — should NOT be sent
         fireEvent.change(screen.getByRole('textbox', { name: /Lyrics/i }), { target: { value: 'hello' } });
 
@@ -157,7 +157,7 @@ describe('MusicGeneratorForm', () => {
 
         render(<MusicGeneratorForm onJobCreated={mockOnJobCreated} />);
 
-        fireEvent.change(screen.getByRole('textbox', { name: /Prompt/i }), { target: { value: 'A pop song' } });
+        fireEvent.change(screen.getByRole('textbox', { name: /Style/i }), { target: { value: 'A pop song' } });
         // 6 non-whitespace chars — should be sent
         fireEvent.change(screen.getByRole('textbox', { name: /Lyrics/i }), { target: { value: 'hello!' } });
 
@@ -174,7 +174,7 @@ describe('MusicGeneratorForm', () => {
 
         render(<MusicGeneratorForm onJobCreated={mockOnJobCreated} />);
 
-        fireEvent.change(screen.getByRole('textbox', { name: /Prompt/i }), { target: { value: 'A piano piece' } });
+        fireEvent.change(screen.getByRole('textbox', { name: /Style/i }), { target: { value: 'A piano piece' } });
         fireEvent.change(screen.getByRole('textbox', { name: /Lyrics/i }), { target: { value: 'some lyrics here that are long' } });
         fireEvent.click(screen.getByRole('checkbox', { name: /Instrumental only/i }));
 
@@ -202,7 +202,7 @@ describe('MusicGeneratorForm', () => {
 
         render(<MusicGeneratorForm onJobCreated={mockOnJobCreated} />);
 
-        fireEvent.change(screen.getByRole('textbox', { name: /Prompt/i }), { target: { value: 'Valid prompt' } });
+        fireEvent.change(screen.getByRole('textbox', { name: /Style/i }), { target: { value: 'Valid prompt' } });
         fireEvent.click(screen.getByRole('button', { name: /Generate Music/i }));
 
         await waitFor(() => {
@@ -234,7 +234,7 @@ describe('MusicGeneratorForm', () => {
 
         render(<MusicGeneratorForm onJobCreated={mockOnJobCreated} />);
 
-        const promptInput = screen.getByRole('textbox', { name: /Prompt/i });
+        const promptInput = screen.getByRole('textbox', { name: /Style/i });
         fireEvent.change(promptInput, { target: { value: 'A cool track' } });
         fireEvent.click(screen.getByRole('button', { name: /Generate Music/i }));
 
@@ -316,6 +316,79 @@ describe('MusicGeneratorForm', () => {
         await waitFor(() => {
             expect(screen.getByRole('button', { name: /Try an Example/i })).not.toBeDisabled();
             expect(screen.getByRole('button', { name: /Generate Music/i })).not.toBeDisabled();
+        });
+    });
+
+    it('sends the topic separately from the style prompt', async () => {
+        mockApiFetch.mockResolvedValue({ task_id: 'topic-task', status: 'queued' });
+
+        render(<MusicGeneratorForm onJobCreated={mockOnJobCreated} />);
+
+        fireEvent.change(screen.getByRole('textbox', { name: /Style/i }), {
+            target: { value: 'warm acoustic guitar, gentle male vocal' },
+        });
+        fireEvent.change(screen.getByRole('textbox', { name: /Topic/i }), {
+            target: { value: "a father and son's relationship" },
+        });
+        fireEvent.click(screen.getByRole('button', { name: /Generate Music/i }));
+
+        await waitFor(() => {
+            const body = JSON.parse((mockApiFetch.mock.calls[0][1] as { body: string }).body);
+            expect(body.prompt).toBe('warm acoustic guitar, gentle male vocal');
+            expect(body.topic).toBe("a father and son's relationship");
+        });
+    });
+
+    it('omits the topic once the user writes their own lyrics', async () => {
+        mockApiFetch.mockResolvedValue({ task_id: 'topic-ignored', status: 'queued' });
+
+        render(<MusicGeneratorForm onJobCreated={mockOnJobCreated} />);
+
+        fireEvent.change(screen.getByRole('textbox', { name: /Style/i }), { target: { value: 'A ballad' } });
+        const topicInput = screen.getByRole('textbox', { name: /Topic/i });
+        fireEvent.change(topicInput, { target: { value: 'growing older' } });
+        fireEvent.change(screen.getByRole('textbox', { name: /Lyrics/i }), {
+            target: { value: '[Verse]\nWords that are mine' },
+        });
+
+        // Nothing for a topic to steer once the lyrics are written.
+        expect(topicInput).toBeDisabled();
+
+        fireEvent.click(screen.getByRole('button', { name: /Generate Music/i }));
+
+        await waitFor(() => {
+            const body = JSON.parse((mockApiFetch.mock.calls[0][1] as { body: string }).body);
+            expect(body.topic).toBeUndefined();
+            expect(body.lyrics).toBe('[Verse]\nWords that are mine');
+        });
+    });
+
+    it('omits the length on Auto so the LM chooses one', async () => {
+        mockApiFetch.mockResolvedValue({ task_id: 'auto-length', status: 'queued' });
+
+        render(<MusicGeneratorForm onJobCreated={mockOnJobCreated} />);
+
+        fireEvent.change(screen.getByRole('textbox', { name: /Style/i }), { target: { value: 'A long ballad' } });
+        fireEvent.click(screen.getByRole('button', { name: /Generate Music/i }));
+
+        await waitFor(() => {
+            const body = JSON.parse((mockApiFetch.mock.calls[0][1] as { body: string }).body);
+            expect(body.duration).toBeUndefined();
+        });
+    });
+
+    it('sends an explicitly chosen length as a number', async () => {
+        mockApiFetch.mockResolvedValue({ task_id: 'length-task', status: 'queued' });
+
+        render(<MusicGeneratorForm onJobCreated={mockOnJobCreated} />);
+
+        fireEvent.change(screen.getByRole('textbox', { name: /Style/i }), { target: { value: 'A long ballad' } });
+        fireEvent.change(screen.getByLabelText(/Length/i), { target: { value: '180' } });
+        fireEvent.click(screen.getByRole('button', { name: /Generate Music/i }));
+
+        await waitFor(() => {
+            const body = JSON.parse((mockApiFetch.mock.calls[0][1] as { body: string }).body);
+            expect(body.duration).toBe(180);
         });
     });
 });

@@ -14,8 +14,17 @@ inference service. The unit the user waits on.
 _Avoid_: Job, generation, render
 
 **Prompt**:
-The user's free-text description of the music they want.
+The user's free-text description of how the music should *sound* — instrumentation,
+mood, tempo, production. Becomes the ACE-Step caption. Says nothing about what the song
+is about; that is the Topic.
 _Avoid_: Caption, description, query
+
+**Topic**:
+The user's description of what the song is *about* — its story or subject. Reaches the
+model only through lyric generation, never through the caption, because an ACE-Step
+caption has no channel to the vocals. Unused when the user writes their own lyrics or
+asks for an instrumental.
+_Avoid_: Subject, theme, sample query, about
 
 **Example**:
 A curated, pre-written prompt shipped with the application that a user can load into
