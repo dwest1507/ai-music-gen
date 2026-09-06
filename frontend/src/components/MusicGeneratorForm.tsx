@@ -28,11 +28,24 @@ const LOADING_MESSAGES = [
 
 const generateSchema = z.object({
     prompt: z.string().min(3, "Prompt must be at least 3 characters").max(1000, "Prompt must be less than 1000 characters"),
+    topic: z.string().max(1000, "Topic must be less than 1000 characters").optional(),
     genre: z.string().optional(),
+    duration: z.number().min(10).max(300).optional(),
     lyrics: z.string().max(5000, "Lyrics must be less than 5000 characters").optional(),
     vocal_language: z.string().optional(),
     instrumental: z.boolean().optional(),
 });
+
+// Values map to seconds; "" means let the 5Hz LM decide. An explicit length is
+// what stops the LM picking a song shorter than the lyrics need (SPEC.md FR-2).
+const DURATION_OPTIONS: ReadonlyArray<{ value: string; label: string }> = [
+    { value: "", label: "Auto" },
+    { value: "30", label: "30 seconds" },
+    { value: "60", label: "1 minute" },
+    { value: "120", label: "2 minutes" },
+    { value: "180", label: "3 minutes" },
+    { value: "240", label: "4 minutes" },
+];
 
 function FieldTooltip({ text }: { text: string }) {
     return (
@@ -61,7 +74,9 @@ interface MusicGeneratorFormProps {
 
 export function MusicGeneratorForm({ onJobCreated, gpuWarm = null }: MusicGeneratorFormProps) {
     const [prompt, setPrompt] = useState("");
+    const [topic, setTopic] = useState("");
     const [genre, setGenre] = useState("");
+    const [duration, setDuration] = useState("");
     const [lyrics, setLyrics] = useState("");
     const [vocalLanguage, setVocalLanguage] = useState("en");
     const [instrumental, setInstrumental] = useState(false);
@@ -75,6 +90,10 @@ export function MusicGeneratorForm({ onJobCreated, gpuWarm = null }: MusicGenera
 
     // Either async action locks the form; only generation swaps the button label.
     const isBusy = isLoading || isLoadingExample;
+
+    // Mirrors the backend's threshold for "the user wrote these" (SPEC.md FR-4).
+    // Topic only steers AI-written lyrics, so it greys out once these exist.
+    const hasUserLyrics = lyrics.replace(/\s/g, "").length > 5;
 
     // Counts upward rather than promising a range. A snapshot rebuild takes
     // roughly twice an ordinary wake, so any figure we promised would sometimes
@@ -104,9 +123,11 @@ export function MusicGeneratorForm({ onJobCreated, gpuWarm = null }: MusicGenera
             setLyrics(example.lyrics);
             setVocalLanguage(example.vocal_language);
             setInstrumental(example.instrumental);
-            // Examples carry no genre — clear any leftover value so the form
-            // matches the example exactly.
+            // Examples carry no genre, topic, or duration — clear any leftover
+            // values so the form matches the example exactly.
             setGenre("");
+            setTopic("");
+            setDuration("");
         } catch (err: unknown) {
             setError("Failed to fetch example prompt.");
             console.error(err);
@@ -133,11 +154,13 @@ export function MusicGeneratorForm({ onJobCreated, gpuWarm = null }: MusicGenera
         setLastSubmitTime(now);
 
         try {
-            const hasUserLyrics = lyrics.replace(/\s/g, "").length > 5;
-
             const payloadInput = {
                 prompt,
+                // Only meaningful when the AI is writing the lyrics; with user lyrics
+                // or an instrumental track there is nothing for it to steer.
+                topic: (!instrumental && !hasUserLyrics && topic.trim()) ? topic.trim() : undefined,
                 genre: genre || undefined,
+                duration: duration ? Number(duration) : undefined,
                 lyrics: (!instrumental && hasUserLyrics) ? lyrics : undefined,
                 vocal_language: vocalLanguage,
                 instrumental: instrumental || undefined,
@@ -191,8 +214,8 @@ export function MusicGeneratorForm({ onJobCreated, gpuWarm = null }: MusicGenera
                 <form onSubmit={handleSubmit} className="space-y-5">
                     <div className="space-y-2">
                         <Label htmlFor="prompt">
-                            Prompt <span className="text-destructive ml-0.5">*</span>
-                            <FieldTooltip text="Describe the music you want. Include genre, mood, instruments, and energy level for best results. E.g. 'upbeat electronic dance music with heavy bass and synth leads.'" />
+                            Style <span className="text-destructive ml-0.5">*</span>
+                            <FieldTooltip text="How the music should SOUND: instruments, mood, tempo, production. E.g. 'upbeat electronic dance music with heavy bass and synth leads.' Say what the song is about in the field below instead." />
                         </Label>
                         <textarea
                             id="prompt"
@@ -201,6 +224,21 @@ export function MusicGeneratorForm({ onJobCreated, gpuWarm = null }: MusicGenera
                             onChange={(e) => setPrompt(e.target.value)}
                             disabled={isBusy}
                             className="field-input flex min-h-[90px] w-full resize-y px-3 py-2 text-[13px]"
+                        />
+                    </div>
+
+                    <div className="space-y-2">
+                        <Label htmlFor="topic">
+                            Topic
+                            <FieldTooltip text="What the song should be ABOUT — its story or subject. E.g. 'a father and son's relationship'. Used only when the AI writes the words for you; ignored if you write your own or pick instrumental." />
+                        </Label>
+                        <input
+                            id="topic"
+                            placeholder="What should the song be about?"
+                            value={topic}
+                            onChange={(e) => setTopic(e.target.value)}
+                            disabled={isBusy || instrumental || hasUserLyrics}
+                            className="field-input flex h-10 w-full px-3 py-2 text-[13px]"
                         />
                     </div>
 
@@ -242,6 +280,26 @@ export function MusicGeneratorForm({ onJobCreated, gpuWarm = null }: MusicGenera
                                 <option value="Rock" />
                                 <option value="Synthwave" />
                             </datalist>
+                        </div>
+
+                        <div className="space-y-2">
+                            <Label htmlFor="duration">
+                                Length
+                                <FieldTooltip text="How long the track should be. On Auto the AI picks a length, which can end up shorter than the words need — set a length explicitly if the singing gets cut off." />
+                            </Label>
+                            <Select
+                                id="duration"
+                                value={duration}
+                                onChange={(e) => setDuration(e.target.value)}
+                                disabled={isBusy}
+                                className="w-full"
+                            >
+                                {DURATION_OPTIONS.map((option) => (
+                                    <option key={option.value} value={option.value}>
+                                        {option.label}
+                                    </option>
+                                ))}
+                            </Select>
                         </div>
 
                         <div className="space-y-2">

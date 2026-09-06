@@ -220,6 +220,11 @@ export function JobStatus({ jobId }: JobStatusProps) {
     }
 
     const audioUrls = job.audio_urls || (job.audio_url ? [job.audio_url] : []);
+    // "[Instrumental]" is the marker the backend sends for a no-vocals request, not
+    // words anyone sang, so it gets no section.
+    const lyricsUsed = job.metadata?.lyrics?.trim() ?? "";
+    const hasSungLyrics =
+        lyricsUsed !== "" && !/^\[inst(rumental)?\]$/i.test(lyricsUsed);
     const statusConfig = STATUS_CONFIG[job.status as keyof typeof STATUS_CONFIG];
     const StatusIcon = statusConfig?.icon ?? AlertCircle;
 
@@ -285,9 +290,16 @@ export function JobStatus({ jobId }: JobStatusProps) {
                     </CardDescription>
                 )}
 
+                {/* Labelled because a terse prompt is expanded before it reaches the
+                    model, so this can legitimately differ from what was typed. */}
                 {job.metadata && (job.metadata.prompt || job.metadata.genre) && (
-                    <CardDescription className="mt-1 line-clamp-2 text-xs italic">
-                        &quot;{job.metadata.prompt}&quot;
+                    <CardDescription className="mt-1 text-xs">
+                        <span className="font-mono text-[10px] tracking-widest text-muted-foreground/60">
+                            Style used
+                        </span>
+                        <span className="mt-0.5 line-clamp-2 block italic">
+                            &quot;{job.metadata.prompt}&quot;
+                        </span>
                     </CardDescription>
                 )}
             </CardHeader>
@@ -317,6 +329,20 @@ export function JobStatus({ jobId }: JobStatusProps) {
                             </Badge>
                         )}
                     </div>
+                )}
+
+                {/* What the model was actually given. Every step between the form and
+                    the model can substitute its own text, and for a long time did so
+                    invisibly — showing the result is how a regression stays visible. */}
+                {hasSungLyrics && (
+                    <details className="border-t border-white/[0.08] pt-3">
+                        <summary className="cursor-pointer font-mono text-[10px] tracking-widest text-muted-foreground/60 hover:text-muted-foreground">
+                            Lyrics used
+                        </summary>
+                        <pre className="mt-2 max-h-64 overflow-y-auto whitespace-pre-wrap font-sans text-[13px] leading-relaxed text-muted-foreground">
+                            {job.metadata!.lyrics}
+                        </pre>
+                    </details>
                 )}
 
                 {job.status === "failed" && (
