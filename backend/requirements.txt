@@ -80,7 +80,7 @@ pyyaml==6.0.3
     # via bandit
 rich==15.0.0
     # via bandit
-ruff==0.16.6
+ruff==0.16.7
     # via backend
 slowapi==0.1.10
     # via backend
@@ -104,5 +104,5 @@ typing-inspection==0.4.4
     #   pydantic
 uvicorn==0.52.4
     # via backend
-wrapt==2.4.0
+wrapt==2.4.1
     # via deprecated
