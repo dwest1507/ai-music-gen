@@ -29,7 +29,6 @@ vi.mock('lucide-react', () => ({
     Server: () => <svg data-testid="server-icon" />,
     LayoutTemplate: () => <svg data-testid="layout-icon" />,
     Shield: () => <svg data-testid="shield-icon" />,
-    Github: () => <svg data-testid="github-icon" />,
 }));
 
 vi.mock('@/components/ui/badge', () => ({
@@ -107,6 +106,15 @@ describe('About page', () => {
         const hrefs = links.map((l) => l.getAttribute('href'));
         expect(hrefs).toContain('https://github.com/dwest1507/ai-music-gen');
         expect(hrefs).toContain('https://github.com/dwest1507/ACE-Step-1.5-modal/tree/feature/modal-support');
+    });
+
+    it('renders a mark inside each hero repo link', () => {
+        render(<About />);
+        const repoLink = screen
+            .getAllByRole('link')
+            .find((l) => l.getAttribute('href') === 'https://github.com/dwest1507/ai-music-gen');
+        expect(repoLink).toBeDefined();
+        expect(repoLink!.querySelector('svg')).not.toBeNull();
     });
 
     it('renders fork link in AI Inference card', () => {
