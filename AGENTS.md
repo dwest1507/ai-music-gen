@@ -73,13 +73,13 @@ Key endpoints and their rate limits:
 
 The `ACEStepClient` is instantiated once at startup (lifespan), shared across requests, and closed on shutdown.
 
-**Examples:** `backend/examples/simple_mode/` and `backend/examples/text2music/` contain 170+ JSON files used by `GET /api/examples/random`.
+**Examples:** Curated examples in `backend/examples/text2music/`; `GET /api/examples/random` filters strictly to English examples with lyrics.
 
 ### Frontend (`/frontend`)
 
 - **Tech:** Next.js 16, React 19, TypeScript, Tailwind CSS v4
-- **Entry:** `src/app/page.tsx` — home page, switches between form and job status views
-- **Form:** `src/components/MusicGeneratorForm.tsx` — unified form (prompt, genre, language, lyrics, instrumental), "Try an Example" button
+- **Entry:** `src/app/page.tsx` — home page, switches between wizard and job status views
+- **Wizard:** `src/components/MusicGeneratorWizard.tsx` — progressive 3-step card (prompt entry with example pre-caching, type selection, review & generation), replacing the legacy static form
 - **Job polling:** `src/components/JobStatus.tsx` — polls `/api/jobs/{task_id}`, shows progress and audio
 - **Audio:** `src/components/AudioPlayer.tsx` — wavesurfer.js waveform + playback
 - **Layout:** `src/components/NavBar.tsx`, `src/components/layout/` — sticky header, ambient background layer, global footer

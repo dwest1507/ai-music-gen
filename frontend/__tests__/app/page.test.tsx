@@ -3,9 +3,9 @@ import { describe, it, expect, vi } from 'vitest';
 import React from 'react';
 import Home from '@/app/page';
 
-vi.mock('@/components/MusicGeneratorForm', () => ({
-    MusicGeneratorForm: ({ onJobCreated }: { onJobCreated: (id: string) => void }) => (
-        <button onClick={() => onJobCreated('job-123')}>Submit Form</button>
+vi.mock('@/components/MusicGeneratorWizard', () => ({
+    MusicGeneratorWizard: ({ onJobCreated }: { onJobCreated: (id: string) => void }) => (
+        <button onClick={() => onJobCreated('job-123')}>Submit Wizard</button>
     ),
 }));
 
@@ -18,28 +18,28 @@ vi.mock('lucide-react', () => ({
 }));
 
 describe('Home page', () => {
-    it('renders the form when no job is active', () => {
+    it('renders the wizard when no job is active', () => {
         render(<Home />);
         expect(screen.getByText('AI Music Generator')).toBeInTheDocument();
-        expect(screen.getByRole('button', { name: /Submit Form/i })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /Submit Wizard/i })).toBeInTheDocument();
         expect(screen.queryByTestId('job-status')).not.toBeInTheDocument();
     });
 
     it('shows job status after a job is created', () => {
         render(<Home />);
-        fireEvent.click(screen.getByRole('button', { name: /Submit Form/i }));
+        fireEvent.click(screen.getByRole('button', { name: /Submit Wizard/i }));
 
         expect(screen.getByTestId('job-status')).toHaveTextContent('job-123');
-        expect(screen.queryByRole('button', { name: /Submit Form/i })).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: /Submit Wizard/i })).not.toBeInTheDocument();
     });
 
-    it('returns to the form when "Generate Another Song" is clicked', () => {
+    it('returns to the wizard when "Generate Another Song" is clicked', () => {
         render(<Home />);
-        fireEvent.click(screen.getByRole('button', { name: /Submit Form/i }));
+        fireEvent.click(screen.getByRole('button', { name: /Submit Wizard/i }));
 
         fireEvent.click(screen.getByRole('button', { name: /Generate Another Song/i }));
 
-        expect(screen.getByRole('button', { name: /Submit Form/i })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /Submit Wizard/i })).toBeInTheDocument();
         expect(screen.queryByTestId('job-status')).not.toBeInTheDocument();
     });
 });

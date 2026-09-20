@@ -200,10 +200,14 @@ async def _enrich_caption(client: ACEStepClient, caption: str) -> str:
         # to the one the visitor asked for, so a failure costs them a thinner caption
         # rather than their song. Broad on purpose — anything the client did not
         # convert lands here too, and none of it is worth failing a generation over.
-        logger.warning("Caption enrichment failed; generating with the original caption")
+        logger.warning(
+            "Caption enrichment failed; generating with the original caption"
+        )
         return caption
 
-    return enriched.strip() if isinstance(enriched, str) and enriched.strip() else caption
+    return (
+        enriched.strip() if isinstance(enriched, str) and enriched.strip() else caption
+    )
 
 
 def _build_release_task_payload(gen_request: GenerationRequest) -> dict:
@@ -259,9 +263,7 @@ def _build_release_task_payload(gen_request: GenerationRequest) -> dict:
         payload["sample_mode"] = True
         # Prefer the dedicated topic field. Falling back to the style prompt keeps
         # older clients working, at the cost of the conflation FR-20 exists to fix.
-        payload["sample_query"] = _strip_instrumental_hints(
-            gen_request.topic or prompt
-        )
+        payload["sample_query"] = _strip_instrumental_hints(gen_request.topic or prompt)
 
     if gen_request.bpm is not None:
         payload["bpm"] = gen_request.bpm
@@ -579,36 +581,36 @@ async def cancel_job(task_id: str, request: Request, response: Response):
 @router.get("/examples/random", response_model=ExampleResponse)
 @limiter.limit("10/minute")
 async def get_random_example(request: Request, response: Response):
-    """Pick a random example from the curated collection and map its fields."""
+    """Pick a random example from curated English examples with lyrics."""
     try:
-        # Draw from both collections so every example is reachable, regardless
-        # of which one it came from — the UI no longer has separate modes.
-        all_files = [
-            (dirname, f)
-            for dirname in ("simple_mode", "text2music")
-            if (EXAMPLES_ROOT / dirname).exists()
-            for f in (EXAMPLES_ROOT / dirname).glob("*.json")
-        ]
+        text2music_dir = EXAMPLES_ROOT / "text2music"
+        if not text2music_dir.exists():
+            raise HTTPException(status_code=404, detail="No example files found")
 
+        all_files = list(text2music_dir.glob("*.json"))
         if not all_files:
             raise HTTPException(status_code=404, detail="No example files found")
 
-        dirname, random_file = random.choice(all_files)
-        with open(random_file, "r") as f:
-            data = json.load(f)
+        qualifying_examples = []
+        for f in all_files:
+            with open(f, "r", encoding="utf-8") as file:
+                data = json.load(file)
+            if (
+                data.get("language") == "en"
+                and data.get("lyrics")
+                and str(data.get("lyrics")).strip()
+            ):
+                qualifying_examples.append(data)
 
-        if dirname == "simple_mode":
-            return ExampleResponse(
-                prompt=data.get("description", ""),
-                lyrics="",
-                vocal_language=_normalize_language(data.get("vocal_language")),
-                instrumental=bool(data.get("instrumental")),
-            )
+        if not qualifying_examples:
+            raise HTTPException(status_code=404, detail="No example files found")
 
+        data = random.choice(qualifying_examples)
         return ExampleResponse(
             prompt=data.get("caption", ""),
             lyrics=data.get("lyrics", ""),
-            vocal_language=_normalize_language(data.get("language")),
+            vocal_language="en",
+            instrumental=False,
         )
 
     except HTTPException:
