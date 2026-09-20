@@ -55,7 +55,7 @@ route to the vocals, so a narrative request placed there was always going to be 
 We give up the LM's caption *expansion*, which genuinely helps a terse prompt like
 "country". That loss is deliberate and bounded: `use_cot_caption` stays a request field
 so the behaviour can be A/B-tested without a redeploy, and doing the expansion under our
-own control is the "Two-stage caption" decision in SPEC.md §8.1, implemented alongside
+own control is the "Two-stage caption" decision in docs/archive/SPEC.md §8.1, implemented alongside
 this one: a terse caption is expanded by a dedicated `/format_input` call that is sent
 empty lyrics and whose output is kept only as the caption.
 

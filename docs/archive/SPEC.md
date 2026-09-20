@@ -1,6 +1,10 @@
 # AI Music Generation Web Application — Specification
 
-A portfolio project demonstrating full-stack AI engineering: a web-based music generation service powered by the [ACE-Step v1.5](https://github.com/ACE-Step/ACE-Step-1.5) model deployed on [Modal](https://modal.com/).
+> [!NOTE]
+> **Archived Document**: This specification reflects the initial MVP implementation and architecture.
+> It is preserved for historical reference and context on initial requirement IDs (FR-1 through FR-25).
+> Active development is tracked via GitHub Issues and PRDs; domain terminology lives in `CONTEXT.md`,
+> and architectural decisions are recorded in `docs/adr/`.
 
 ---
 

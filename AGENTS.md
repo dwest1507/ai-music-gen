@@ -2,14 +2,6 @@
 
 This file provides guidance to AI coding agents when working with code in this repository.
 
-## Spec-Driven Development
-
-This repository follows **spec-driven development**. `SPEC.md` is the single source of truth for all requirements, architecture decisions, and API contracts.
-
-**Rules:**
-1. **New requirement → update `SPEC.md` first**, then implement. Never implement a feature that isn't reflected in the spec.
-2. **Every code change must keep `SPEC.md` in sync.** If an implementation deviates from or extends what the spec describes, update the spec in the same commit/PR.
-3. `SPEC.md` takes precedence over any other documentation (README, comments, etc.) when there is a conflict.
 
 ## Project Overview
 
@@ -92,8 +84,8 @@ The `ACEStepClient` is instantiated once at startup (lifespan), shared across re
 - **Audio:** `src/components/AudioPlayer.tsx` — wavesurfer.js waveform + playback
 - **Layout:** `src/components/NavBar.tsx`, `src/components/layout/` — sticky header, ambient background layer, global footer
 - **API client:** `src/lib/api.ts` — typed fetch wrapper with Zod validation and `ApiError` class
-- **Prewarm:** `src/lib/prewarm.ts` — wakes the GPU on the visitor's first interaction, then holds it with a visibility-gated, capped heartbeat. See SPEC.md FR-16/FR-17 and `docs/adr/0001-speculative-gpu-prewarm.md`
-- **Design system:** tokens live in `src/app/globals.css` and mirror the davidwest.dev portfolio (near-black surfaces, `#0ea5e9` accent, Inter, mono micro-labels). Consume semantic tokens (`text-primary`, `text-muted-foreground`, `.field-input`, `.surface-card`) instead of hard-coded hex. See SPEC.md §5.3.3.
+- **Prewarm:** `src/lib/prewarm.ts` — wakes the GPU on the visitor's first interaction, then holds it with a visibility-gated, capped heartbeat. See `docs/adr/0001-speculative-gpu-prewarm.md`
+- **Design system:** tokens live in `src/app/globals.css` and mirror the davidwest.dev portfolio (near-black surfaces, `#0ea5e9` accent, Inter, mono micro-labels). Consume semantic tokens (`text-primary`, `text-muted-foreground`, `.field-input`, `.surface-card`) instead of hard-coded hex.
 
 ### Versioning
 
