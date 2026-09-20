@@ -7,8 +7,8 @@ import {
   Server,
   LayoutTemplate,
   Shield,
-  Github,
 } from "lucide-react";
+import { GithubIcon } from "@/components/icons/GithubIcon";
 import Link from "next/link";
 
 export const metadata: Metadata = {
@@ -138,7 +138,7 @@ export default function About() {
             rel="noopener noreferrer"
             className="inline-flex items-center gap-2 rounded-full border border-white/[0.08] px-3 py-1.5 font-mono text-[10px] tracking-widest text-muted-foreground transition-colors duration-150 hover:border-primary/40 hover:text-primary"
           >
-            <Github className="h-3.5 w-3.5" strokeWidth={1.5} />
+            <GithubIcon className="h-3.5 w-3.5" />
             ai-music-gen
           </Link>
           <Link
@@ -147,7 +147,7 @@ export default function About() {
             rel="noopener noreferrer"
             className="inline-flex items-center gap-2 rounded-full border border-white/[0.08] px-3 py-1.5 font-mono text-[10px] tracking-widest text-muted-foreground transition-colors duration-150 hover:border-primary/40 hover:text-primary"
           >
-            <Github className="h-3.5 w-3.5" strokeWidth={1.5} />
+            <GithubIcon className="h-3.5 w-3.5" />
             ACE-Step-1.5-modal (fork)
           </Link>
         </div>
