@@ -14,16 +14,14 @@ inference service. The unit the user waits on.
 _Avoid_: Job, generation, render
 
 **Prompt**:
-The user's free-text description of how the music should *sound* — instrumentation,
-mood, tempo, production. Becomes the ACE-Step caption. Says nothing about what the song
-is about; that is the Topic.
-_Avoid_: Caption, description, query
+The user's single free-text description of the song — including musical style, mood,
+instrumentation, and subject matter. Groq decomposes this into structured lyrics and
+musical styling for ACE-Step.
+_Avoid_: Caption, description, query, style input
 
 **Topic**:
-The user's description of what the song is *about* — its story or subject. Reaches the
-model only through lyric generation, never through the caption, because an ACE-Step
-caption has no channel to the vocals. Unused when the user writes their own lyrics or
-asks for an instrumental.
+Retired as a standalone user input. The song's subject matter is now written directly into
+the Prompt, where the Groq songwriter extracts it to compose the lyrics.
 _Avoid_: Subject, theme, sample query, about
 
 **Example**:
