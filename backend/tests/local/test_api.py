@@ -1349,3 +1349,166 @@ async def test_format_lyrics_rate_limit_returns_429(async_client):
         "/api/format-lyrics", json={"lyrics": "Test lyrics to format"}
     )
     assert resp.status_code == 429
+
+
+# ── Enhance prompt (Issue #84) ────────────────────────────────────
+
+
+def _install_groq_replying(*replies: str):
+    """Install a real GroqService whose network client answers with `replies` in order.
+
+    Mocking at the Groq client boundary keeps the route and the service under test,
+    so these tests assert what reaches Groq rather than which internal method ran.
+    """
+    from unittest.mock import AsyncMock, MagicMock
+    from app.main import app
+    from app.services.groq_service import GroqService
+
+    responses = []
+    for reply in replies:
+        choice = MagicMock()
+        choice.message.content = reply
+        resp = MagicMock()
+        resp.choices = [choice]
+        responses.append(resp)
+
+    client = MagicMock()
+    client.chat.completions.create = AsyncMock(side_effect=responses)
+    service = GroqService(api_key="gsk_test_key", model="openai/gpt-oss-120b")
+    service.client = client
+    app.state.groq_service = service
+    return client.chat.completions.create
+
+
+@pytest.mark.asyncio
+async def test_enhance_prompt_returns_the_enriched_prompt(async_client):
+    """POST /api/enhance-prompt swaps a bare idea for one with styling detail."""
+    groq_create = _install_groq_replying(
+        "Pop punk, 180 BPM, distorted power chords, punchy drums, anthemic mood"
+    )
+
+    response = await async_client.post(
+        "/api/enhance-prompt", json={"prompt": "Make a pop punk song about being a dad"}
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "prompt": "Pop punk, 180 BPM, distorted power chords, punchy drums, anthemic mood"
+    }
+    sent = groq_create.call_args.kwargs["messages"]
+    assert "Make a pop punk song about being a dad" in sent[-1]["content"]
+
+
+@pytest.mark.asyncio
+async def test_enhance_prompt_unconfigured_returns_503(async_client):
+    """Without GROQ_API_KEY the endpoint says so instead of failing upstream."""
+    from app.main import app
+    from app.services.groq_service import GroqService
+
+    app.state.groq_service = GroqService(api_key="")
+
+    response = await async_client.post(
+        "/api/enhance-prompt", json={"prompt": "An upbeat indie pop song"}
+    )
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "AI lyric service is not configured"
+
+
+@pytest.mark.asyncio
+async def test_enhance_prompt_rate_limit_returns_429(async_client):
+    """/api/enhance-prompt allows 10 requests per minute, then 429s."""
+    _install_groq_replying(*["Enhanced prompt"] * 10)
+
+    for _ in range(10):
+        resp = await async_client.post(
+            "/api/enhance-prompt", json={"prompt": "A test prompt"}
+        )
+        assert resp.status_code == 200
+
+    resp = await async_client.post(
+        "/api/enhance-prompt", json={"prompt": "A test prompt"}
+    )
+    assert resp.status_code == 429
+
+
+@pytest.mark.asyncio
+async def test_enhance_prompt_upstream_failure_returns_502(async_client):
+    """A Groq outage surfaces as a bad gateway the wizard can degrade on."""
+    from unittest.mock import AsyncMock, MagicMock
+    from app.main import app
+    from app.services.groq_service import GroqService
+
+    service = GroqService(api_key="gsk_test_key")
+    service.client = MagicMock()
+    service.client.chat.completions.create = AsyncMock(side_effect=RuntimeError("boom"))
+    app.state.groq_service = service
+
+    response = await async_client.post(
+        "/api/enhance-prompt", json={"prompt": "A test prompt"}
+    )
+
+    assert response.status_code == 502
+
+
+@pytest.mark.asyncio
+async def test_enhance_prompt_validation_error(async_client):
+    """Whitespace-only prompts are rejected before reaching Groq."""
+    response = await async_client.post("/api/enhance-prompt", json={"prompt": "   "})
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_repeat_enhancement_varies_the_original_instead_of_compounding(
+    async_client,
+):
+    """Attempt 2+ starts from what the visitor originally typed.
+
+    Feeding the last enhancement back in would snowball into an ever longer
+    paragraph; the previous result is only offered as something to differ from.
+    """
+    groq_create = _install_groq_replying("A brand new take")
+    already_enhanced = "Pop punk, 180 BPM, distorted power chords " * 3
+
+    response = await async_client.post(
+        "/api/enhance-prompt",
+        json={
+            "prompt": already_enhanced,
+            "attempt": 2,
+            "original_prompt": "Make a pop punk song about being a dad",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"prompt": "A brand new take"}
+    user_message = groq_create.call_args.kwargs["messages"][-1]["content"]
+    assert "Make a pop punk song about being a dad" in user_message
+    assert "alternative" in user_message.lower()
+    assert groq_create.call_args.kwargs["temperature"] > 0.7
+
+
+@pytest.mark.asyncio
+async def test_first_enhancement_ignores_attempt_context(async_client):
+    """Attempt 1 enhances the text as typed, at the normal temperature."""
+    groq_create = _install_groq_replying("Enhanced")
+
+    await async_client.post(
+        "/api/enhance-prompt", json={"prompt": "lofi beats", "attempt": 1}
+    )
+
+    user_message = groq_create.call_args.kwargs["messages"][-1]["content"]
+    assert "lofi beats" in user_message
+    assert "alternative" not in user_message.lower()
+    assert groq_create.call_args.kwargs["temperature"] == 0.7
+
+
+@pytest.mark.asyncio
+async def test_enhancement_attempt_is_capped_at_three(async_client):
+    """A fourth attempt is refused, bounding Groq spend per song."""
+    _install_groq_replying("never used")
+
+    response = await async_client.post(
+        "/api/enhance-prompt", json={"prompt": "lofi beats", "attempt": 4}
+    )
+
+    assert response.status_code == 422

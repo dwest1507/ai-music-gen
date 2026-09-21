@@ -1,7 +1,7 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, MockedFunction } from 'vitest';
 import { MusicGeneratorWizard } from '@/components/MusicGeneratorWizard';
-import { apiFetch, getRandomExample, generateLyrics, formatLyrics } from '@/lib/api';
+import { apiFetch, getRandomExample, generateLyrics, formatLyrics, enhancePrompt, ApiError } from '@/lib/api';
 import React from 'react';
 
 // Mock dependencies
@@ -13,6 +13,7 @@ vi.mock('@/lib/api', async (importOriginal) => {
         getRandomExample: vi.fn(),
         generateLyrics: vi.fn(),
         formatLyrics: vi.fn(),
+        enhancePrompt: vi.fn(),
     };
 });
 
@@ -20,6 +21,7 @@ const mockApiFetch = apiFetch as MockedFunction<typeof apiFetch>;
 const mockGetRandomExample = getRandomExample as MockedFunction<typeof getRandomExample>;
 const mockGenerateLyrics = generateLyrics as MockedFunction<typeof generateLyrics>;
 const mockFormatLyrics = formatLyrics as MockedFunction<typeof formatLyrics>;
+const mockEnhancePrompt = enhancePrompt as MockedFunction<typeof enhancePrompt>;
 
 
 describe('MusicGeneratorWizard - Step 1', () => {
@@ -689,5 +691,127 @@ describe('MusicGeneratorWizard - Auto-Formatting for Edited Lyrics (#87)', () =>
 
         expect(mockFormatLyrics).not.toHaveBeenCalled();
         expect(mockOnJobCreated).toHaveBeenCalledWith('job-cleared-4');
+    });
+});
+
+
+describe('MusicGeneratorWizard - Prompt Enhancement (#84)', () => {
+    const mockOnJobCreated = vi.fn();
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+    });
+
+    const renderStep1 = (promptText = 'Make a pop punk song about being a dad') => {
+        render(<MusicGeneratorWizard onJobCreated={mockOnJobCreated} />);
+        fireEvent.change(screen.getByRole('textbox', { name: /prompt/i }), {
+            target: { value: promptText },
+        });
+    };
+
+    const promptBox = () => screen.getByRole('textbox', { name: /prompt/i });
+    const enhanceButton = () => screen.getByRole('button', { name: /Enhance Prompt/i });
+
+    it('Enhance Prompt replaces the prompt text in place and shows the attempts left', async () => {
+        mockEnhancePrompt.mockResolvedValue({ prompt: 'Pop punk, 180 BPM, distorted power chords' });
+        renderStep1();
+
+        fireEvent.click(enhanceButton());
+
+        await waitFor(() => {
+            expect(promptBox()).toHaveValue('Pop punk, 180 BPM, distorted power chords');
+        });
+        expect(mockEnhancePrompt).toHaveBeenCalledWith(
+            'Make a pop punk song about being a dad',
+            1,
+            undefined
+        );
+        expect(screen.getByText(/2 left/i)).toBeInTheDocument();
+        // Still on Step 1: enhancing edits the prompt, it does not advance the wizard.
+        expect(screen.getByText(/Step 1 of 3/i)).toBeInTheDocument();
+    });
+
+    it('Revert to Original restores the typed prompt without spending an attempt', async () => {
+        mockEnhancePrompt.mockResolvedValue({ prompt: 'Pop punk, 180 BPM, distorted power chords' });
+        renderStep1();
+        expect(screen.queryByRole('button', { name: /Revert to Original/i })).not.toBeInTheDocument();
+
+        fireEvent.click(enhanceButton());
+        await waitFor(() => expect(promptBox()).toHaveValue('Pop punk, 180 BPM, distorted power chords'));
+
+        fireEvent.click(screen.getByRole('button', { name: /Revert to Original/i }));
+
+        expect(promptBox()).toHaveValue('Make a pop punk song about being a dad');
+        expect(mockEnhancePrompt).toHaveBeenCalledTimes(1);
+        expect(screen.getByText(/2 left/i)).toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: /Revert to Original/i })).not.toBeInTheDocument();
+    });
+
+    it('repeat enhancements vary the original prompt and stop after three attempts', async () => {
+        mockEnhancePrompt
+            .mockResolvedValueOnce({ prompt: 'Take one' })
+            .mockResolvedValueOnce({ prompt: 'Take two' })
+            .mockResolvedValueOnce({ prompt: 'Take three' });
+        renderStep1('lofi beats');
+        expect(screen.getByText(/3 left/i)).toBeInTheDocument();
+
+        for (const expected of ['Take one', 'Take two', 'Take three']) {
+            fireEvent.click(enhanceButton());
+            await waitFor(() => expect(promptBox()).toHaveValue(expected));
+        }
+
+        // Each call carries the attempt number and the text the visitor originally typed.
+        expect(mockEnhancePrompt.mock.calls).toEqual([
+            ['lofi beats', 1, undefined],
+            ['Take one', 2, 'lofi beats'],
+            ['Take two', 3, 'lofi beats'],
+        ]);
+        expect(screen.getByText(/0 left/i)).toBeInTheDocument();
+        expect(enhanceButton()).toBeDisabled();
+    });
+
+    it('keeps the attempt counter, enhanced text and Revert when navigating Back and forth', async () => {
+        mockEnhancePrompt.mockResolvedValue({ prompt: 'Pop punk, 180 BPM, distorted power chords' });
+        renderStep1();
+        fireEvent.click(enhanceButton());
+        await waitFor(() => expect(promptBox()).toHaveValue('Pop punk, 180 BPM, distorted power chords'));
+
+        fireEvent.click(screen.getByRole('button', { name: /Continue/i }));
+        expect(screen.getByText(/Step 2 of 3/i)).toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: /Back/i }));
+
+        expect(promptBox()).toHaveValue('Pop punk, 180 BPM, distorted power chords');
+        expect(screen.getByText(/2 left/i)).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /Revert to Original/i })).toBeInTheDocument();
+        expect(mockEnhancePrompt).toHaveBeenCalledTimes(1);
+    });
+
+    it('disables Enhance with an explanatory tooltip when the AI service is not configured', async () => {
+        mockEnhancePrompt.mockRejectedValue(
+            new ApiError(503, 'Service Unavailable', { detail: 'AI lyric service is not configured' })
+        );
+        renderStep1();
+
+        fireEvent.click(enhanceButton());
+
+        await waitFor(() => expect(enhanceButton()).toBeDisabled());
+        expect(enhanceButton()).toHaveAttribute('title', expect.stringMatching(/unavailable/i));
+        // The failed call is not billed as an attempt, and the wizard carries on regardless.
+        expect(promptBox()).toHaveValue('Make a pop punk song about being a dad');
+        expect(screen.getByText(/3 left/i)).toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: /Continue/i }));
+        expect(screen.getByText(/Step 2 of 3/i)).toBeInTheDocument();
+    });
+
+    it('reports a transient enhancement failure without spending an attempt', async () => {
+        mockEnhancePrompt.mockRejectedValue(new Error('Network error'));
+        renderStep1();
+
+        fireEvent.click(enhanceButton());
+
+        expect(await screen.findByRole('alert')).toHaveTextContent(/enhance/i);
+        expect(promptBox()).toHaveValue('Make a pop punk song about being a dad');
+        expect(screen.getByText(/3 left/i)).toBeInTheDocument();
+        expect(enhanceButton()).toBeEnabled();
     });
 });

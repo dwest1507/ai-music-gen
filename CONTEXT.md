@@ -19,6 +19,12 @@ instrumentation, and subject matter. Groq decomposes this into structured lyrics
 musical styling for ACE-Step.
 _Avoid_: Caption, description, query, style input
 
+**Enhancement**:
+A Groq rewrite of the Prompt that adds tempo, instrumentation, and mood detail while
+keeping its subject. Limited to three per song; later ones are variations of the
+visitor's original wording, never an expansion of the previous enhancement.
+_Avoid_: Prompt expansion, rewrite, boost
+
 **Topic**:
 Retired as a standalone user input. The song's subject matter is now written directly into
 the Prompt, where the Groq songwriter extracts it to compose the lyrics.

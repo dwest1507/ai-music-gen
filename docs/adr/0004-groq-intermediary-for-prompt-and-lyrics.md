@@ -34,6 +34,16 @@ textarea in Step 3 of the progressive creation wizard before generation is submi
     AI/example output skip the call entirely. If formatting fails, is rate limited, or exceeds
     a 10-second client-side timeout, the wizard silently falls back to submitting the raw
     edited text.
+  - **Prompt Enhancement** (`POST /api/enhance-prompt`): Step 1 offers an "Enhance Prompt"
+    button that rewrites the prompt in place with tempo, instrumentation, and mood detail.
+    Enhancement is capped at three attempts per song, tracked in the wizard and mirrored by a
+    server-side `attempt <= 3` bound because the backend is stateless. Later attempts send the
+    visitor's original wording and treat the previous result as something to differ from, so
+    repeated clicks produce variations rather than compounding into a verbose paragraph.
+    "Revert to Original" restores the typed text without spending an attempt. The counter
+    survives back/forward navigation and resets only when "Generate Another Song" remounts
+    the wizard. A `503` disables the button with a tooltip; other failures show an inline
+    error and spend no attempt.
 
 ## Consequences
 
@@ -45,5 +55,5 @@ textarea in Step 3 of the progressive creation wizard before generation is submi
   structured section tags, with a silent fallback to raw text on formatting failure.
 - If `GROQ_API_KEY` is not configured, the endpoint returns HTTP 503, and the frontend
   degrades gracefully to manual lyric entry.
-- Rate limiting is enforced at 10 requests per minute per IP for lyric generation, and
-  15 requests per minute per IP for lyric formatting.
+- Rate limiting is enforced at 10 requests per minute per IP for lyric generation and prompt
+  enhancement, and 15 requests per minute per IP for lyric formatting.

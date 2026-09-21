@@ -31,6 +31,16 @@ Rules:
 5. Output ONLY the formatted lyrics. No explanations, preamble, or commentary.
 """
 
+SYSTEM_PROMPT_ENHANCE = """You are an expert music producer who writes prompts for a text-to-music model.
+Your task is to rewrite the user's song idea as one rich, concise prompt that keeps their subject matter and adds musical detail.
+
+Requirements:
+1. Keep the user's genre, mood and narrative subject. Never drop or change what the song is about.
+2. Add specific tempo (BPM), instrumentation, production and mood descriptors suited to the genre.
+3. Write a single paragraph of at most 600 characters. No lists, headings or line breaks.
+4. Output ONLY the rewritten prompt. Do NOT include explanations, preamble, quotation marks or commentary.
+"""
+
 
 class GroqService:
     """Encapsulates interaction with Groq API for lyric writing and formatting tasks."""
@@ -114,4 +124,44 @@ class GroqService:
                 },
             ],
             temperature=0.2,
+        )
+
+    async def enhance_prompt(
+        self,
+        prompt: str,
+        attempt: int = 1,
+        original_prompt: Optional[str] = None,
+    ) -> str:
+        """Expand a song idea with tempo, instrumentation and mood descriptors.
+
+        The first attempt enhances `prompt` as typed. Later attempts start again from
+        `original_prompt` and treat `prompt` (the previous enhancement) as something to
+        differ from, so repeated clicks yield variations rather than a snowballing
+        paragraph.
+
+        Args:
+            prompt: The text currently in the prompt box.
+            attempt: 1-based enhancement attempt for this song.
+            original_prompt: What the visitor typed before any enhancement.
+
+        Returns:
+            A single enriched prompt that keeps the original subject matter.
+        """
+        if attempt > 1 and original_prompt:
+            content = (
+                f"Enhance this song prompt:\n{original_prompt}\n\n"
+                f"Write an alternative variation with a different sonic palette and "
+                f"feel from this earlier attempt:\n{prompt}"
+            )
+            temperature = 0.9
+        else:
+            content = f"Enhance this song prompt:\n{prompt}"
+            temperature = 0.7
+
+        return await self._chat_completion(
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT_ENHANCE},
+                {"role": "user", "content": content},
+            ],
+            temperature=temperature,
         )

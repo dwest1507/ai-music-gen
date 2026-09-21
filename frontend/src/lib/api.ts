@@ -139,3 +139,23 @@ export async function formatLyrics(lyrics: string): Promise<FormatLyricsResponse
         clearTimeout(timer);
     }
 }
+
+export interface EnhancePromptResponse {
+    prompt: string;
+}
+
+/**
+ * @param prompt The text currently in the prompt box.
+ * @param attempt 1-based enhancement attempt for this song; later ones vary the original.
+ * @param originalPrompt What the visitor typed before any enhancement.
+ */
+export async function enhancePrompt(
+    prompt: string,
+    attempt: number,
+    originalPrompt?: string
+): Promise<EnhancePromptResponse> {
+    return apiFetch<EnhancePromptResponse>("/api/enhance-prompt", {
+        method: "POST",
+        body: JSON.stringify({ prompt, attempt, original_prompt: originalPrompt }),
+    });
+}

@@ -61,7 +61,7 @@ Browser → Next.js (Vercel, port 3000)
 - **Config:** `app/core/config.py` — Pydantic Settings, reads from env
 - **Rate limiting:** `app/core/limiter.py` — slowapi, keyed on client IP. Deliberately *not* the session cookie: the client supplies it, so rotating it minted a fresh allowance per request
 - **Warm state:** `app/core/warm_state.py` — in-memory dedupe window and monthly warm budget for GPU prewarm. Process-local, so correct only while the backend runs as a single instance (see `docs/adr/0001-speculative-gpu-prewarm.md`)
-- **Service:** `app/services/acestep_client.py` — all Modal API calls (httpx AsyncClient, HTTP/2, shared lifecycle); `app/services/groq_service.py` — Groq LLM client for automated song lyric generation
+- **Service:** `app/services/acestep_client.py` — all Modal API calls (httpx AsyncClient, HTTP/2, shared lifecycle); `app/services/groq_service.py` — Groq LLM client for prompt enhancement and automated song lyric generation
 - **Routes:** `app/api/routes/generation.py` — all `/api/*` endpoints
 
 Key endpoints and their rate limits:
@@ -70,6 +70,7 @@ Key endpoints and their rate limits:
 | `POST /api/generate` | 5/min |
 | `POST /api/generate-lyrics` | 10/min |
 | `POST /api/format-lyrics` | 15/min |
+| `POST /api/enhance-prompt` | 10/min |
 | `GET /api/jobs/{task_id}` | 60/min |
 | `GET /api/audio/{task_id}` | 20/min |
 | `GET /api/examples/random` | 10/min |

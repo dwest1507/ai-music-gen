@@ -134,6 +134,27 @@ class GenerateLyricsResponse(BaseModel):
     lyrics: str
 
 
+class EnhancePromptRequest(BaseModel):
+    prompt: str = Field(..., min_length=1, max_length=1000)
+    # 1-based; the wizard allows three enhancements per song, so the server refuses a
+    # fourth rather than trusting the client to stop.
+    attempt: int = Field(1, ge=1, le=3)
+    # What the visitor typed before any enhancement, so later attempts can vary it
+    # instead of expanding the previous enhancement.
+    original_prompt: Optional[str] = Field(None, max_length=1000)
+
+    @field_validator("prompt")
+    @classmethod
+    def validate_prompt_not_empty(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("Prompt cannot be empty or whitespace-only")
+        return v.strip()
+
+
+class EnhancePromptResponse(BaseModel):
+    prompt: str
+
+
 class FormatLyricsRequest(BaseModel):
     lyrics: str = Field(..., min_length=1, max_length=5000)
 
@@ -707,4 +728,33 @@ async def format_lyrics(
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=f"Lyric formatting failed: {str(e)}",
+        )
+
+
+@router.post("/enhance-prompt", response_model=EnhancePromptResponse)
+@limiter.limit("10/minute")
+async def enhance_prompt(
+    request: Request,
+    response: Response,
+    body: EnhancePromptRequest,
+):
+    """Expand a song prompt with musical styling detail using Groq."""
+    get_session_id(request, response)
+    groq_service = _get_groq_service(request)
+    if not groq_service or not groq_service.is_configured:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="AI lyric service is not configured",
+        )
+
+    try:
+        enhanced = await groq_service.enhance_prompt(
+            body.prompt, body.attempt, body.original_prompt
+        )
+        return EnhancePromptResponse(prompt=enhanced)
+    except Exception as e:
+        logger.exception("Failed to enhance prompt via Groq")
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Prompt enhancement failed: {str(e)}",
         )

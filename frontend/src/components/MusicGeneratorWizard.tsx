@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useState, useEffect } from "react";
-import { apiFetch, GenerateRequest, GenerateResponse, getRandomExample, generateLyrics, formatLyrics } from "@/lib/api";
+import { apiFetch, GenerateRequest, GenerateResponse, getRandomExample, generateLyrics, formatLyrics, enhancePrompt, ApiError } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AlertCircle, ArrowLeft, ArrowRight, Check, Mic, Music, Radio, Sparkles } from "lucide-react";
@@ -20,6 +20,9 @@ const LOADING_MESSAGES = [
     "Beethoven took years. This'll take a minute.",
     "Any second now...",
 ];
+
+/** Enhancements allowed per song; the backend refuses a fourth. */
+const MAX_ENHANCE_ATTEMPTS = 3;
 
 const promptSchema = z.string().min(3, "Prompt must be at least 3 characters").max(1000, "Prompt must be less than 1000 characters");
 
@@ -44,6 +47,12 @@ export function MusicGeneratorWizard({ onJobCreated, gpuWarm = null }: MusicGene
     const [isExampleModified, setIsExampleModified] = useState(false);
     const [pristineLyrics, setPristineLyrics] = useState("");
     const [isFormattingLyrics, setIsFormattingLyrics] = useState(false);
+    const [enhanceAttemptsLeft, setEnhanceAttemptsLeft] = useState(MAX_ENHANCE_ATTEMPTS);
+    const [originalPrompt, setOriginalPrompt] = useState<string | null>(null);
+    const [isEnhancing, setIsEnhancing] = useState(false);
+    // Set when the backend reports Groq is not configured; enhancement is a nicety, so
+    // the button goes quiet rather than blocking the rest of the wizard.
+    const [enhanceUnavailable, setEnhanceUnavailable] = useState(false);
 
     const [isLoading, setIsLoading] = useState(false);
     const [isLoadingExample, setIsLoadingExample] = useState(false);
@@ -52,7 +61,7 @@ export function MusicGeneratorWizard({ onJobCreated, gpuWarm = null }: MusicGene
     const [loadingMessageIndex, setLoadingMessageIndex] = useState(0);
     const [elapsedSeconds, setElapsedSeconds] = useState(0);
 
-    const isBusy = isLoading || isLoadingExample || isLoadingLyrics || isFormattingLyrics;
+    const isBusy = isLoading || isLoadingExample || isLoadingLyrics || isFormattingLyrics || isEnhancing;
 
     useEffect(() => {
         if (!isLoading) return;
@@ -99,6 +108,39 @@ export function MusicGeneratorWizard({ onJobCreated, gpuWarm = null }: MusicGene
         if (lastGeneratedPrompt && val.trim() !== lastGeneratedPrompt.trim()) {
             setLastGeneratedPrompt(null);
         }
+    };
+
+    const handleEnhance = async () => {
+        setError(null);
+        const result = promptSchema.safeParse(prompt.trim());
+        if (!result.success) {
+            setError(result.error.issues[0].message);
+            return;
+        }
+        const base = originalPrompt ?? prompt.trim();
+        const attempt = MAX_ENHANCE_ATTEMPTS - enhanceAttemptsLeft + 1;
+        setIsEnhancing(true);
+        try {
+            const data = await enhancePrompt(prompt.trim(), attempt, originalPrompt ?? undefined);
+            setOriginalPrompt(base);
+            setEnhanceAttemptsLeft((left) => left - 1);
+            handlePromptChange(data.prompt);
+        } catch (err: unknown) {
+            if (err instanceof ApiError && err.status === 503) {
+                setEnhanceUnavailable(true);
+            } else {
+                console.error(err);
+                setError("Prompt enhancement failed. Please try again.");
+            }
+        } finally {
+            setIsEnhancing(false);
+        }
+    };
+
+    const handleRevertEnhancement = () => {
+        if (originalPrompt === null) return;
+        handlePromptChange(originalPrompt);
+        setOriginalPrompt(null);
     };
 
     const handleStep1Next = (e: React.FormEvent) => {
@@ -272,9 +314,43 @@ export function MusicGeneratorWizard({ onJobCreated, gpuWarm = null }: MusicGene
                                 disabled={isBusy}
                                 className="field-input flex min-h-[120px] w-full resize-y px-3 py-2.5 text-[13px] leading-relaxed"
                             />
-                            <p className="font-mono text-[10px] tracking-widest text-muted-foreground">
-                                Musical vibe and story in one unified description. Defaults to English.
-                            </p>
+                            <div className="flex items-center justify-between gap-3">
+                                <p className="font-mono text-[10px] tracking-widest text-muted-foreground">
+                                    Musical vibe and story in one unified description. Defaults to English.
+                                </p>
+                                <div className="flex items-center gap-2">
+                                    <span className="font-mono text-[10px] tracking-widest text-muted-foreground">
+                                        {enhanceAttemptsLeft} left
+                                    </span>
+                                    {originalPrompt !== null && (
+                                        <Button
+                                            type="button"
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={handleRevertEnhancement}
+                                            disabled={isBusy}
+                                        >
+                                            Revert to Original
+                                        </Button>
+                                    )}
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={handleEnhance}
+                                        disabled={isBusy || enhanceAttemptsLeft === 0 || enhanceUnavailable}
+                                        title={
+                                            enhanceUnavailable
+                                                ? "Prompt enhancement is unavailable right now. You can still continue with your own prompt."
+                                                : undefined
+                                        }
+                                        className="flex items-center gap-1.5"
+                                    >
+                                        <Sparkles className="w-3 h-3" strokeWidth={1.5} />
+                                        {isEnhancing ? "Enhancing..." : "Enhance Prompt"}
+                                    </Button>
+                                </div>
+                            </div>
                         </div>
 
                         {error && (

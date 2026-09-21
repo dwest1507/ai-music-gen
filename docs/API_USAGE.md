@@ -152,5 +152,38 @@ Formats user-written or edited lyrics into structured sections with header tags 
 not configured, `502` when Groq fails. The frontend treats any failure (or a 10s timeout) as a
 signal to submit the raw edited lyrics instead, so formatting never blocks generation.
 
+### `POST /api/enhance-prompt`
+Rewrites a song prompt with tempo, instrumentation, production, and mood detail using Groq, keeping the original genre and subject matter. The wizard replaces the prompt text in place and offers a one-click revert.
+
+**Rate limit:** 10 requests per minute per IP.
+
+**Request Body:**
+```json
+{
+  "prompt": "Make a pop punk song about being a dad",
+  "attempt": 1,
+  "original_prompt": null
+}
+```
+
+| Field | Notes |
+|---|---|
+| `prompt` | Text currently in the prompt box (1-1000 chars). |
+| `attempt` | 1-based enhancement number for this song, `1`-`3`. Defaults to `1`; a fourth attempt is refused with `422`. |
+| `original_prompt` | What the visitor typed before any enhancement. Optional; send it on attempt 2+. |
+
+Attempt 1 enhances `prompt` as typed. On attempt 2+ with `original_prompt`, the model starts again from the original and treats `prompt` (the previous enhancement) as something to differ from, at a higher temperature (`0.9`). Repeated clicks therefore yield alternative variations instead of an ever-longer paragraph.
+
+**Response (200 OK):**
+```json
+{
+  "prompt": "Pop punk, 180 BPM, distorted power chords, punchy drums, anthemic and heartfelt about fatherhood"
+}
+```
+
+**Errors:** `422` for empty/whitespace-only prompts or `attempt` outside `1`-`3`, `503` when `GROQ_API_KEY` is
+not configured, `502` when Groq fails. The frontend disables the button with a tooltip on `503` and shows an
+inline error on other failures without spending an attempt, so enhancement never blocks the wizard.
+
 ### `GET /health`
 Returns system health, including the connection status to the upstream ACE-Step API.
