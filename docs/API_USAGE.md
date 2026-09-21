@@ -110,5 +110,47 @@ generation form.
 }
 ```
 
+### `POST /api/generate-lyrics`
+Generates structured song lyrics (`[Verse]`, `[Chorus]`, etc.) using Groq LLM based on user prompt.
+
+**Rate limit:** 10 requests per minute per IP.
+
+**Request Body:**
+```json
+{
+  "prompt": "an upbeat synthwave song about neon nights"
+}
+```
+
+**Response (200 OK):**
+```json
+{
+  "lyrics": "[Verse 1]\nCruising down the electric avenue..."
+}
+```
+
+### `POST /api/format-lyrics`
+Formats user-written or edited lyrics into structured sections with header tags (`[Verse]`, `[Chorus]`, `[Bridge]`, etc.) without altering any of the user's words. Used as an auto-formatting step before generation when lyrics have been manually edited.
+
+**Rate limit:** 15 requests per minute per IP.
+
+**Request Body:**
+```json
+{
+  "lyrics": "walking through the city lights\nfeel the beat tonight\noh oh oh\nwalking through the city lights"
+}
+```
+
+**Response (200 OK):**
+```json
+{
+  "lyrics": "[Verse 1]\nWalking through the city lights\nFeel the beat tonight\n\n[Chorus]\nOh oh oh\nWalking through the city lights"
+}
+```
+
+**Errors:** `422` for empty/whitespace-only lyrics (max 5000 chars), `503` when `GROQ_API_KEY` is
+not configured, `502` when Groq fails. The frontend treats any failure (or a 10s timeout) as a
+signal to submit the raw edited lyrics instead, so formatting never blocks generation.
+
 ### `GET /health`
 Returns system health, including the connection status to the upstream ACE-Step API.

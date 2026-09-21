@@ -1221,7 +1221,7 @@ async def test_generate_lyrics_success(async_client):
         "lyrics": "[Verse 1]\nNeon lights in the rain\n\n[Chorus]\nRunning away"
     }
     mock_service.generate_lyrics.assert_awaited_once_with(
-        "A synthwave track about nighttime driving"
+        "A synthwave track about nighttime driving",
     )
 
 
@@ -1252,5 +1252,100 @@ async def test_generate_lyrics_rate_limit_returns_429(async_client):
 
     resp = await async_client.post(
         "/api/generate-lyrics", json={"prompt": "A test prompt"}
+    )
+    assert resp.status_code == 429
+
+
+# ── Format lyrics (Issue #87) ─────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_format_lyrics_unconfigured_returns_503(async_client):
+    """POST /api/format-lyrics returns 503 when GroqService is unconfigured."""
+    from app.main import app
+    from app.services.groq_service import GroqService
+
+    app.state.groq_service = GroqService(api_key="")
+
+    response = await async_client.post(
+        "/api/format-lyrics",
+        json={"lyrics": "some raw text to format"},
+    )
+    assert response.status_code == 503
+    assert "not configured" in response.json()["detail"].lower()
+
+
+@pytest.mark.asyncio
+async def test_format_lyrics_success(async_client):
+    """When configured, POST /api/format-lyrics returns formatted lyrics."""
+    from unittest.mock import AsyncMock, MagicMock
+    from app.main import app
+    from app.services.groq_service import GroqService
+
+    mock_service = MagicMock(spec=GroqService)
+    mock_service.is_configured = True
+    mock_service.format_lyrics = AsyncMock(
+        return_value="[Verse 1]\nNeon lights in the rain\n\n[Chorus]\nRunning away"
+    )
+    app.state.groq_service = mock_service
+
+    raw_input = "neon lights in the rain\nrunning away"
+    response = await async_client.post(
+        "/api/format-lyrics",
+        json={"lyrics": raw_input},
+    )
+    assert response.status_code == 200
+    assert response.json() == {
+        "lyrics": "[Verse 1]\nNeon lights in the rain\n\n[Chorus]\nRunning away"
+    }
+    mock_service.format_lyrics.assert_awaited_once_with(raw_input)
+
+
+@pytest.mark.asyncio
+async def test_format_lyrics_upstream_failure_returns_502(async_client):
+    """A Groq failure surfaces as 502 so the wizard can fall back to raw lyrics."""
+    from unittest.mock import AsyncMock, MagicMock
+    from app.main import app
+    from app.services.groq_service import GroqService
+
+    mock_service = MagicMock(spec=GroqService)
+    mock_service.is_configured = True
+    mock_service.format_lyrics = AsyncMock(side_effect=RuntimeError("groq timed out"))
+    app.state.groq_service = mock_service
+
+    response = await async_client.post(
+        "/api/format-lyrics", json={"lyrics": "some raw text to format"}
+    )
+    assert response.status_code == 502
+    assert "formatting failed" in response.json()["detail"].lower()
+
+
+@pytest.mark.asyncio
+async def test_format_lyrics_validation_error(async_client):
+    """Empty or whitespace-only lyrics returns 422."""
+    response = await async_client.post("/api/format-lyrics", json={"lyrics": "   "})
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_format_lyrics_rate_limit_returns_429(async_client):
+    """POST /api/format-lyrics allows 15 requests per minute, then 429s."""
+    from unittest.mock import AsyncMock, MagicMock
+    from app.main import app
+    from app.services.groq_service import GroqService
+
+    mock_service = MagicMock(spec=GroqService)
+    mock_service.is_configured = True
+    mock_service.format_lyrics = AsyncMock(return_value="[Verse]\nFormatted lyrics")
+    app.state.groq_service = mock_service
+
+    for _ in range(15):
+        resp = await async_client.post(
+            "/api/format-lyrics", json={"lyrics": "Test lyrics to format"}
+        )
+        assert resp.status_code == 200
+
+    resp = await async_client.post(
+        "/api/format-lyrics", json={"lyrics": "Test lyrics to format"}
     )
     assert resp.status_code == 429

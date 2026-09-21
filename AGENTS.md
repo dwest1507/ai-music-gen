@@ -69,6 +69,7 @@ Key endpoints and their rate limits:
 |---|---|
 | `POST /api/generate` | 5/min |
 | `POST /api/generate-lyrics` | 10/min |
+| `POST /api/format-lyrics` | 15/min |
 | `GET /api/jobs/{task_id}` | 60/min |
 | `GET /api/audio/{task_id}` | 20/min |
 | `GET /api/examples/random` | 10/min |

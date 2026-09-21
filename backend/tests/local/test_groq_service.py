@@ -39,3 +39,31 @@ async def test_groq_service_generate_lyrics_calls_completions():
     assert call_kwargs["temperature"] == 0.7
     assert len(call_kwargs["messages"]) == 2
     assert "An indie rock anthem" in call_kwargs["messages"][1]["content"]
+
+
+@pytest.mark.asyncio
+async def test_groq_service_format_lyrics_raises_when_not_configured():
+    service = GroqService(api_key="")
+    with pytest.raises(RuntimeError, match="GroqService is not configured"):
+        await service.format_lyrics("some raw lyrics")
+
+
+@pytest.mark.asyncio
+async def test_groq_service_format_lyrics_calls_completions():
+    service = GroqService(api_key="gsk_test_key", model="openai/gpt-oss-120b")
+    mock_client = MagicMock()
+    mock_choice = MagicMock()
+    mock_choice.message.content = "[Verse 1]\nFormatted output"
+    mock_resp = MagicMock()
+    mock_resp.choices = [mock_choice]
+    mock_client.chat.completions.create = AsyncMock(return_value=mock_resp)
+    service.client = mock_client
+
+    result = await service.format_lyrics("some raw lyrics")
+    assert result == "[Verse 1]\nFormatted output"
+    mock_client.chat.completions.create.assert_awaited_once()
+    call_kwargs = mock_client.chat.completions.create.call_args.kwargs
+    assert call_kwargs["model"] == "openai/gpt-oss-120b"
+    assert call_kwargs["temperature"] == 0.2
+    assert len(call_kwargs["messages"]) == 2
+    assert "some raw lyrics" in call_kwargs["messages"][1]["content"]

@@ -134,6 +134,21 @@ class GenerateLyricsResponse(BaseModel):
     lyrics: str
 
 
+class FormatLyricsRequest(BaseModel):
+    lyrics: str = Field(..., min_length=1, max_length=5000)
+
+    @field_validator("lyrics")
+    @classmethod
+    def validate_lyrics_not_empty(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("Lyrics cannot be empty or whitespace-only")
+        return v.strip()
+
+
+class FormatLyricsResponse(BaseModel):
+    lyrics: str
+
+
 # ── Helpers ──────────────────────────────────────────────────────
 
 
@@ -665,4 +680,31 @@ async def generate_lyrics(
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=f"Lyric generation failed: {str(e)}",
+        )
+
+
+@router.post("/format-lyrics", response_model=FormatLyricsResponse)
+@limiter.limit("15/minute")
+async def format_lyrics(
+    request: Request,
+    response: Response,
+    body: FormatLyricsRequest,
+):
+    """Format custom or edited lyrics into structured sections without altering words."""
+    get_session_id(request, response)
+    groq_service = _get_groq_service(request)
+    if not groq_service or not groq_service.is_configured:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="AI lyric service is not configured",
+        )
+
+    try:
+        formatted = await groq_service.format_lyrics(body.lyrics)
+        return FormatLyricsResponse(lyrics=formatted)
+    except Exception as e:
+        logger.exception("Failed to format lyrics via Groq")
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Lyric formatting failed: {str(e)}",
         )

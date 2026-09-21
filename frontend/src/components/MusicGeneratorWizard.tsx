@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useState, useEffect } from "react";
-import { apiFetch, GenerateRequest, GenerateResponse, getRandomExample, generateLyrics } from "@/lib/api";
+import { apiFetch, GenerateRequest, GenerateResponse, getRandomExample, generateLyrics, formatLyrics } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AlertCircle, ArrowLeft, ArrowRight, Check, Mic, Music, Radio, Sparkles } from "lucide-react";
@@ -42,6 +42,8 @@ export function MusicGeneratorWizard({ onJobCreated, gpuWarm = null }: MusicGene
     const [lastGeneratedPrompt, setLastGeneratedPrompt] = useState<string | null>(null);
     const [examplePrompt, setExamplePrompt] = useState<string | null>(null);
     const [isExampleModified, setIsExampleModified] = useState(false);
+    const [pristineLyrics, setPristineLyrics] = useState("");
+    const [isFormattingLyrics, setIsFormattingLyrics] = useState(false);
 
     const [isLoading, setIsLoading] = useState(false);
     const [isLoadingExample, setIsLoadingExample] = useState(false);
@@ -50,7 +52,7 @@ export function MusicGeneratorWizard({ onJobCreated, gpuWarm = null }: MusicGene
     const [loadingMessageIndex, setLoadingMessageIndex] = useState(0);
     const [elapsedSeconds, setElapsedSeconds] = useState(0);
 
-    const isBusy = isLoading || isLoadingExample || isLoadingLyrics;
+    const isBusy = isLoading || isLoadingExample || isLoadingLyrics || isFormattingLyrics;
 
     useEffect(() => {
         if (!isLoading) return;
@@ -78,6 +80,7 @@ export function MusicGeneratorWizard({ onJobCreated, gpuWarm = null }: MusicGene
             setIsExampleModified(false);
             setPreCachedLyrics(example.lyrics || "");
             setLyrics(example.lyrics || "");
+            setPristineLyrics(example.lyrics || "");
             setLastGeneratedPrompt(example.prompt);
         } catch (err: unknown) {
             setError("Failed to fetch example prompt.");
@@ -115,6 +118,7 @@ export function MusicGeneratorWizard({ onJobCreated, gpuWarm = null }: MusicGene
         try {
             const data = await generateLyrics(promptText);
             setLyrics(data.lyrics);
+            setPristineLyrics(data.lyrics);
             setLastGeneratedPrompt(promptText);
         } catch (err: unknown) {
             console.error(err);
@@ -135,6 +139,7 @@ export function MusicGeneratorWizard({ onJobCreated, gpuWarm = null }: MusicGene
             const trimmedPrompt = prompt.trim();
             if (preCachedLyrics && !isExampleModified) {
                 setLyrics(preCachedLyrics);
+                setPristineLyrics(preCachedLyrics);
                 setLastGeneratedPrompt(trimmedPrompt);
                 return;
             }
@@ -147,7 +152,7 @@ export function MusicGeneratorWizard({ onJobCreated, gpuWarm = null }: MusicGene
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (isLoading) return;
+        if (isLoading || isFormattingLyrics) return;
 
         const now = Date.now();
         if (now - lastSubmitTime < 5000) {
@@ -155,22 +160,40 @@ export function MusicGeneratorWizard({ onJobCreated, gpuWarm = null }: MusicGene
             return;
         }
 
+        let lyricsToSubmit = lyrics.trim();
+
+        // Auto-formatting for edited lyrics with raw fallback (Issue #87)
+        if (songType === "lyrics" && lyricsToSubmit && lyricsToSubmit !== pristineLyrics.trim()) {
+            setIsFormattingLyrics(true);
+            try {
+                const formatted = await formatLyrics(lyricsToSubmit);
+                if (formatted && formatted.lyrics) {
+                    lyricsToSubmit = formatted.lyrics.trim();
+                    setLyrics(formatted.lyrics);
+                    setPristineLyrics(formatted.lyrics);
+                }
+            } catch (err: unknown) {
+                console.warn("Auto-formatting failed, falling back to raw edited lyrics:", err);
+            } finally {
+                setIsFormattingLyrics(false);
+            }
+        }
+
         setIsLoading(true);
         setLoadingMessageIndex(0);
         setElapsedSeconds(0);
         setError(null);
-        setLastSubmitTime(now);
+        setLastSubmitTime(Date.now());
 
         try {
             const trimmedPrompt = prompt.trim();
-            const trimmedLyrics = lyrics.trim();
             const isInstrumentalSubmission =
-                songType === "instrumental" || (songType === "lyrics" && !trimmedLyrics);
+                songType === "instrumental" || (songType === "lyrics" && !lyricsToSubmit);
 
             const payload: GenerateRequest = {
                 prompt: trimmedPrompt,
                 vocal_language: "en",
-                lyrics: isInstrumentalSubmission ? "[Instrumental]" : trimmedLyrics,
+                lyrics: isInstrumentalSubmission ? "[Instrumental]" : lyricsToSubmit,
                 instrumental: isInstrumentalSubmission ? true : undefined,
             };
 
@@ -476,7 +499,9 @@ export function MusicGeneratorWizard({ onJobCreated, gpuWarm = null }: MusicGene
                                 disabled={isBusy}
                                 className="px-6"
                             >
-                                {isLoading
+                                {isFormattingLyrics
+                                    ? "Formatting lyrics..."
+                                    : isLoading
                                     ? `${gpuWarm === false ? "Waking GPU" : "Submitting"} · ${elapsedSeconds}s`
                                     : "Generate Song"}
                             </Button>

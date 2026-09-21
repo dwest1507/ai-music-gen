@@ -114,3 +114,28 @@ export async function generateLyrics(prompt: string): Promise<GenerateLyricsResp
         body: JSON.stringify({ prompt }),
     });
 }
+
+export interface FormatLyricsRequest {
+    lyrics: string;
+}
+
+export interface FormatLyricsResponse {
+    lyrics: string;
+}
+
+/** Formatting is a nicety; give up quickly so it never holds up generation. */
+export const FORMAT_LYRICS_TIMEOUT_MS = 10_000;
+
+export async function formatLyrics(lyrics: string): Promise<FormatLyricsResponse> {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), FORMAT_LYRICS_TIMEOUT_MS);
+    try {
+        return await apiFetch<FormatLyricsResponse>("/api/format-lyrics", {
+            method: "POST",
+            body: JSON.stringify({ lyrics }),
+            signal: controller.signal,
+        });
+    } finally {
+        clearTimeout(timer);
+    }
+}

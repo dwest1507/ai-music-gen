@@ -1,19 +1,25 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, MockedFunction } from 'vitest';
 import { MusicGeneratorWizard } from '@/components/MusicGeneratorWizard';
-import { apiFetch, getRandomExample, generateLyrics } from '@/lib/api';
+import { apiFetch, getRandomExample, generateLyrics, formatLyrics } from '@/lib/api';
 import React from 'react';
 
 // Mock dependencies
-vi.mock('@/lib/api', () => ({
-    apiFetch: vi.fn(),
-    getRandomExample: vi.fn(),
-    generateLyrics: vi.fn(),
-}));
+vi.mock('@/lib/api', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('@/lib/api')>();
+    return {
+        ...actual,
+        apiFetch: vi.fn(),
+        getRandomExample: vi.fn(),
+        generateLyrics: vi.fn(),
+        formatLyrics: vi.fn(),
+    };
+});
 
 const mockApiFetch = apiFetch as MockedFunction<typeof apiFetch>;
 const mockGetRandomExample = getRandomExample as MockedFunction<typeof getRandomExample>;
 const mockGenerateLyrics = generateLyrics as MockedFunction<typeof generateLyrics>;
+const mockFormatLyrics = formatLyrics as MockedFunction<typeof formatLyrics>;
 
 
 describe('MusicGeneratorWizard - Step 1', () => {
@@ -485,5 +491,203 @@ describe('MusicGeneratorWizard - Step 3 Lyric Review & Generation', () => {
         expect(textarea).toBeInTheDocument();
         fireEvent.change(textarea, { target: { value: '[Verse 1]\nMy custom blues lyrics' } });
         expect(textarea).toHaveValue('[Verse 1]\nMy custom blues lyrics');
+    });
+});
+
+describe('MusicGeneratorWizard - Auto-Formatting for Edited Lyrics (#87)', () => {
+    const mockOnJobCreated = vi.fn();
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+    });
+
+    const advanceToStep3WithLyrics = (promptText = 'A synthwave ballad') => {
+        render(<MusicGeneratorWizard onJobCreated={mockOnJobCreated} />);
+        const promptInput = screen.getByRole('textbox', { name: /prompt/i });
+        fireEvent.change(promptInput, { target: { value: promptText } });
+
+        const nextButton = screen.getByRole('button', { name: /Next|Continue/i });
+        fireEvent.click(nextButton);
+
+        const lyricsBtn = screen.getByRole('button', { name: /Song with Lyrics/i });
+        fireEvent.click(lyricsBtn);
+    };
+
+    it('unedited lyrics skip the format-lyrics call on submission', async () => {
+        mockGenerateLyrics.mockResolvedValueOnce({
+            lyrics: '[Verse 1]\nOriginal pristine lyrics',
+        });
+        mockApiFetch.mockResolvedValueOnce({ task_id: 'job-unedited-1' });
+
+        advanceToStep3WithLyrics('A pristine song');
+
+        await waitFor(() => {
+            expect(screen.getByRole('textbox', { name: /lyrics/i })).toHaveValue(
+                '[Verse 1]\nOriginal pristine lyrics'
+            );
+        });
+
+        const generateBtn = screen.getByRole('button', { name: /Generate Song/i });
+        fireEvent.click(generateBtn);
+
+        await waitFor(() => {
+            expect(mockApiFetch).toHaveBeenCalledWith('/api/generate', expect.objectContaining({
+                method: 'POST',
+                body: expect.stringContaining('[Verse 1]\\nOriginal pristine lyrics'),
+            }));
+        });
+
+        expect(mockFormatLyrics).not.toHaveBeenCalled();
+        expect(mockOnJobCreated).toHaveBeenCalledWith('job-unedited-1');
+    });
+
+    it('edited lyrics trigger auto-formatting on submission with temporary button state and submits formatted output', async () => {
+        mockGenerateLyrics.mockResolvedValueOnce({
+            lyrics: '[Verse 1]\nOriginal lyrics',
+        });
+        let resolveFormat!: (val: { lyrics: string }) => void;
+        const formatPromise = new Promise<{ lyrics: string }>((resolve) => {
+            resolveFormat = resolve;
+        });
+        mockFormatLyrics.mockReturnValueOnce(formatPromise);
+        mockApiFetch.mockResolvedValueOnce({ task_id: 'job-formatted-2' });
+
+        advanceToStep3WithLyrics('An edited song');
+
+        await waitFor(() => {
+            expect(screen.getByRole('textbox', { name: /lyrics/i })).toHaveValue(
+                '[Verse 1]\nOriginal lyrics'
+            );
+        });
+
+        // Edit lyrics
+        const textarea = screen.getByRole('textbox', { name: /lyrics/i });
+        fireEvent.change(textarea, {
+            target: { value: 'my raw edited words without headers' },
+        });
+
+        const generateBtn = screen.getByRole('button', { name: /Generate Song/i });
+        fireEvent.click(generateBtn);
+
+        // Button should show "Formatting lyrics..."
+        await waitFor(() => {
+            expect(screen.getByRole('button', { name: /Formatting lyrics\.\.\./i })).toBeInTheDocument();
+        });
+        expect(mockFormatLyrics).toHaveBeenCalledWith('my raw edited words without headers');
+
+        // Resolve formatting
+        resolveFormat({ lyrics: '[Verse 1]\nmy raw edited words without headers\n\n[Chorus]\nFormatted refrain' });
+
+        await waitFor(() => {
+            expect(mockApiFetch).toHaveBeenCalledWith('/api/generate', expect.objectContaining({
+                method: 'POST',
+                body: expect.stringContaining('[Verse 1]\\nmy raw edited words without headers\\n\\n[Chorus]\\nFormatted refrain'),
+            }));
+        });
+        expect(mockOnJobCreated).toHaveBeenCalledWith('job-formatted-2');
+    });
+
+    it('gracefully falls back to submitting raw edited lyrics if formatting fails or times out', async () => {
+        const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        mockGenerateLyrics.mockResolvedValueOnce({
+            lyrics: '[Verse 1]\nOriginal lyrics',
+        });
+        mockFormatLyrics.mockRejectedValueOnce(new Error('Groq formatting timed out'));
+        mockApiFetch.mockResolvedValueOnce({ task_id: 'job-fallback-3' });
+
+        advanceToStep3WithLyrics('A fallback song');
+
+        await waitFor(() => {
+            expect(screen.getByRole('textbox', { name: /lyrics/i })).toHaveValue(
+                '[Verse 1]\nOriginal lyrics'
+            );
+        });
+
+        // Edit lyrics
+        const textarea = screen.getByRole('textbox', { name: /lyrics/i });
+        fireEvent.change(textarea, {
+            target: { value: 'custom raw lyrics that should be preserved verbatim' },
+        });
+
+        const generateBtn = screen.getByRole('button', { name: /Generate Song/i });
+        fireEvent.click(generateBtn);
+
+        await waitFor(() => {
+            expect(mockFormatLyrics).toHaveBeenCalledWith('custom raw lyrics that should be preserved verbatim');
+        });
+
+        // Generation should not be blocked and raw text submitted
+        await waitFor(() => {
+            expect(mockApiFetch).toHaveBeenCalledWith('/api/generate', expect.objectContaining({
+                method: 'POST',
+                body: expect.stringContaining('custom raw lyrics that should be preserved verbatim'),
+            }));
+        });
+
+        expect(mockOnJobCreated).toHaveBeenCalledWith('job-fallback-3');
+        consoleWarnSpy.mockRestore();
+    });
+
+    it('restoring lyrics to the pristine Groq output skips formatting', async () => {
+        mockGenerateLyrics.mockResolvedValueOnce({
+            lyrics: '[Verse 1]\nOriginal pristine lyrics',
+        });
+        mockApiFetch.mockResolvedValueOnce({ task_id: 'job-restored-5' });
+
+        advanceToStep3WithLyrics('A restored song');
+
+        await waitFor(() => {
+            expect(screen.getByRole('textbox', { name: /lyrics/i })).toHaveValue(
+                '[Verse 1]\nOriginal pristine lyrics'
+            );
+        });
+
+        const textarea = screen.getByRole('textbox', { name: /lyrics/i });
+        fireEvent.change(textarea, { target: { value: 'something else entirely' } });
+        fireEvent.change(textarea, { target: { value: '[Verse 1]\nOriginal pristine lyrics' } });
+
+        fireEvent.click(screen.getByRole('button', { name: /Generate Song/i }));
+
+        await waitFor(() => {
+            expect(mockApiFetch).toHaveBeenCalledWith('/api/generate', expect.objectContaining({
+                method: 'POST',
+                body: expect.stringContaining('[Verse 1]\\nOriginal pristine lyrics'),
+            }));
+        });
+
+        expect(mockFormatLyrics).not.toHaveBeenCalled();
+        expect(mockOnJobCreated).toHaveBeenCalledWith('job-restored-5');
+    });
+
+    it('clearing edited lyrics submits as instrumental and skips formatting', async () => {
+        mockGenerateLyrics.mockResolvedValueOnce({
+            lyrics: '[Verse 1]\nOriginal lyrics',
+        });
+        mockApiFetch.mockResolvedValueOnce({ task_id: 'job-cleared-4' });
+
+        advanceToStep3WithLyrics('Clear lyrics song');
+
+        await waitFor(() => {
+            expect(screen.getByRole('textbox', { name: /lyrics/i })).toHaveValue(
+                '[Verse 1]\nOriginal lyrics'
+            );
+        });
+
+        // Clear lyrics completely
+        const textarea = screen.getByRole('textbox', { name: /lyrics/i });
+        fireEvent.change(textarea, { target: { value: '   ' } });
+
+        const generateBtn = screen.getByRole('button', { name: /Generate Song/i });
+        fireEvent.click(generateBtn);
+
+        await waitFor(() => {
+            expect(mockApiFetch).toHaveBeenCalledWith('/api/generate', expect.objectContaining({
+                method: 'POST',
+                body: expect.stringContaining('"lyrics":"[Instrumental]"'),
+            }));
+        });
+
+        expect(mockFormatLyrics).not.toHaveBeenCalled();
+        expect(mockOnJobCreated).toHaveBeenCalledWith('job-cleared-4');
     });
 });

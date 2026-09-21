@@ -26,6 +26,14 @@ textarea in Step 3 of the progressive creation wizard before generation is submi
   behind a clean backend service (`POST /api/generate-lyrics`). Explicitly generates
   stanzas on transition to Step 3, presents them in an editable textarea, caches them
   across back/forward wizard navigation, and discards example lyrics when the prompt is edited.
+  - **Auto-Formatting for Edited Lyrics** (`POST /api/format-lyrics`): When a visitor edits
+    AI-generated or pre-cached lyrics, the wizard auto-formats the edited text on submission
+    by calling a separate formatting endpoint that applies section header tags (`[Verse]`,
+    `[Chorus]`, `[Bridge]`, etc.) without altering any of the user's words. Formatting uses
+    a low sampling temperature (`0.2`) to preserve fidelity. Lyrics identical to the pristine
+    AI/example output skip the call entirely. If formatting fails, is rate limited, or exceeds
+    a 10-second client-side timeout, the wizard silently falls back to submitting the raw
+    edited text.
 
 ## Consequences
 
@@ -33,6 +41,9 @@ textarea in Step 3 of the progressive creation wizard before generation is submi
   fall back to an instrumental track (`[Instrumental]` with `instrumental=True`).
 - Submission completely bypasses ACE-Step's `sample_mode`: explicit lyrics are always sent
   with `sample_mode=False`.
+- Edited lyrics are auto-formatted before submission to ensure ACE-Step receives properly
+  structured section tags, with a silent fallback to raw text on formatting failure.
 - If `GROQ_API_KEY` is not configured, the endpoint returns HTTP 503, and the frontend
   degrades gracefully to manual lyric entry.
-- Rate limiting is enforced at 10 requests per minute per IP.
+- Rate limiting is enforced at 10 requests per minute per IP for lyric generation, and
+  15 requests per minute per IP for lyric formatting.
