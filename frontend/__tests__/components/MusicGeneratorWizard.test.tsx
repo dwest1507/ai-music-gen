@@ -1,17 +1,20 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, MockedFunction } from 'vitest';
 import { MusicGeneratorWizard } from '@/components/MusicGeneratorWizard';
-import { apiFetch, getRandomExample } from '@/lib/api';
+import { apiFetch, getRandomExample, generateLyrics } from '@/lib/api';
 import React from 'react';
 
 // Mock dependencies
 vi.mock('@/lib/api', () => ({
     apiFetch: vi.fn(),
     getRandomExample: vi.fn(),
+    generateLyrics: vi.fn(),
 }));
 
 const mockApiFetch = apiFetch as MockedFunction<typeof apiFetch>;
 const mockGetRandomExample = getRandomExample as MockedFunction<typeof getRandomExample>;
+const mockGenerateLyrics = generateLyrics as MockedFunction<typeof generateLyrics>;
+
 
 describe('MusicGeneratorWizard - Step 1', () => {
     const mockOnJobCreated = vi.fn();
@@ -208,5 +211,279 @@ describe('MusicGeneratorWizard - Step 3 Instrumental Flow & Submission', () => {
         });
 
         expect(mockOnJobCreated).not.toHaveBeenCalled();
+    });
+});
+
+describe('MusicGeneratorWizard - Step 3 Lyric Review & Generation', () => {
+    const mockOnJobCreated = vi.fn();
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+    });
+
+    const advanceToStep3WithLyrics = (promptText = 'An indie rock anthem about summer') => {
+        render(<MusicGeneratorWizard onJobCreated={mockOnJobCreated} />);
+        const promptInput = screen.getByRole('textbox', { name: /prompt/i });
+        fireEvent.change(promptInput, { target: { value: promptText } });
+
+        const nextButton = screen.getByRole('button', { name: /Next|Continue/i });
+        fireEvent.click(nextButton);
+
+        const lyricsBtn = screen.getByRole('button', { name: /Song with Lyrics/i });
+        fireEvent.click(lyricsBtn);
+    };
+
+    it('entering Step 3 with Song with Lyrics triggers lyric generation and displays loading skeleton', async () => {
+        let resolveLyrics: (val: { lyrics: string }) => void;
+        const lyricsPromise = new Promise<{ lyrics: string }>((resolve) => {
+            resolveLyrics = resolve;
+        });
+        mockGenerateLyrics.mockReturnValue(lyricsPromise);
+
+        advanceToStep3WithLyrics('An indie rock anthem about summer');
+
+        expect(screen.getByText(/Writing song lyrics with AI/i)).toBeInTheDocument();
+        expect(mockGenerateLyrics).toHaveBeenCalledWith('An indie rock anthem about summer');
+
+        // Resolve lyrics
+        resolveLyrics!({ lyrics: '[Verse 1]\nSun on the pavement\n\n[Chorus]\nNever looking back' });
+
+        await waitFor(() => {
+            expect(screen.queryByText(/Writing song lyrics with AI/i)).not.toBeInTheDocument();
+            expect(screen.getByRole('textbox', { name: /lyrics/i })).toHaveValue(
+                '[Verse 1]\nSun on the pavement\n\n[Chorus]\nNever looking back'
+            );
+        });
+    });
+
+    it('preserves premade lyrics from an example without calling generateLyrics if prompt was not modified', async () => {
+        mockGetRandomExample.mockResolvedValue({
+            prompt: 'An upbeat indie track with sparkling guitars',
+            lyrics: '[Verse 1]\nWalking down the sunny street',
+            vocal_language: 'en',
+            instrumental: false,
+        });
+
+        render(<MusicGeneratorWizard onJobCreated={mockOnJobCreated} />);
+
+        const exampleBtn = screen.getByRole('button', { name: /Try an Example/i });
+        fireEvent.click(exampleBtn);
+
+        await waitFor(() => {
+            expect(screen.getByRole('textbox', { name: /prompt/i })).toHaveValue(
+                'An upbeat indie track with sparkling guitars'
+            );
+        });
+
+        const nextButton = screen.getByRole('button', { name: /Next|Continue/i });
+        fireEvent.click(nextButton);
+
+        const lyricsBtn = screen.getByRole('button', { name: /Song with Lyrics/i });
+        fireEvent.click(lyricsBtn);
+
+        expect(mockGenerateLyrics).not.toHaveBeenCalled();
+        expect(screen.getByRole('textbox', { name: /lyrics/i })).toHaveValue(
+            '[Verse 1]\nWalking down the sunny street'
+        );
+    });
+
+    it('modifying an example prompt discards premade lyrics and generates fresh AI lyrics', async () => {
+        mockGetRandomExample.mockResolvedValue({
+            prompt: 'An upbeat indie track with sparkling guitars',
+            lyrics: '[Verse 1]\nWalking down the sunny street',
+            vocal_language: 'en',
+            instrumental: false,
+        });
+        mockGenerateLyrics.mockResolvedValue({
+            lyrics: '[Verse 1]\nFresh generated stanzas for modified prompt',
+        });
+
+        render(<MusicGeneratorWizard onJobCreated={mockOnJobCreated} />);
+
+        const exampleBtn = screen.getByRole('button', { name: /Try an Example/i });
+        fireEvent.click(exampleBtn);
+
+        await waitFor(() => {
+            expect(screen.getByRole('textbox', { name: /prompt/i })).toHaveValue(
+                'An upbeat indie track with sparkling guitars'
+            );
+        });
+
+        const promptInput = screen.getByRole('textbox', { name: /prompt/i });
+        fireEvent.change(promptInput, {
+            target: { value: 'An upbeat indie track with heavy synthesizer leads' },
+        });
+
+        const nextButton = screen.getByRole('button', { name: /Next|Continue/i });
+        fireEvent.click(nextButton);
+
+        const lyricsBtn = screen.getByRole('button', { name: /Song with Lyrics/i });
+        fireEvent.click(lyricsBtn);
+
+        expect(mockGenerateLyrics).toHaveBeenCalledWith(
+            'An upbeat indie track with heavy synthesizer leads'
+        );
+
+        await waitFor(() => {
+            expect(screen.getByRole('textbox', { name: /lyrics/i })).toHaveValue(
+                '[Verse 1]\nFresh generated stanzas for modified prompt'
+            );
+        });
+    });
+
+    it('navigating back and returning preserves generated and edited lyrics without redundant API calls', async () => {
+        mockGenerateLyrics.mockResolvedValue({
+            lyrics: '[Verse 1]\nNeon highway',
+        });
+
+        render(<MusicGeneratorWizard onJobCreated={mockOnJobCreated} />);
+
+        // Step 1: enter prompt
+        const promptInput = screen.getByRole('textbox', { name: /prompt/i });
+        fireEvent.change(promptInput, { target: { value: 'A synthwave journey' } });
+        const nextButton = screen.getByRole('button', { name: /Next|Continue/i });
+        fireEvent.click(nextButton);
+
+        // Step 2: choose Song with Lyrics -> Step 3
+        const lyricsBtn = screen.getByRole('button', { name: /Song with Lyrics/i });
+        fireEvent.click(lyricsBtn);
+
+        await waitFor(() => {
+            expect(screen.getByRole('textbox', { name: /lyrics/i })).toHaveValue(
+                '[Verse 1]\nNeon highway'
+            );
+        });
+        expect(mockGenerateLyrics).toHaveBeenCalledTimes(1);
+
+        // Edit the lyrics
+        const lyricsTextarea = screen.getByRole('textbox', { name: /lyrics/i });
+        fireEvent.change(lyricsTextarea, {
+            target: { value: '[Verse 1]\nNeon highway edited by user' },
+        });
+
+        // Navigate Back to Step 2
+        const backBtnStep3 = screen.getByRole('button', { name: /Back/i });
+        fireEvent.click(backBtnStep3);
+
+        expect(screen.getByText(/Step 2 of 3/i)).toBeInTheDocument();
+
+        // Navigate Back to Step 1
+        const backBtnStep2 = screen.getByRole('button', { name: /Back/i });
+        fireEvent.click(backBtnStep2);
+
+        expect(screen.getByText(/Step 1 of 3/i)).toBeInTheDocument();
+
+        // Advance to Step 2 without modifying prompt
+        const continueBtn = screen.getByRole('button', { name: /Next|Continue/i });
+        fireEvent.click(continueBtn);
+
+        // Select Song with Lyrics -> Step 3
+        const lyricsBtnAgain = screen.getByRole('button', { name: /Song with Lyrics/i });
+        fireEvent.click(lyricsBtnAgain);
+
+        expect(screen.getByText(/Step 3 of 3/i)).toBeInTheDocument();
+
+        // Must still have edited lyrics, and generateLyrics must NOT have been called again
+        expect(screen.getByRole('textbox', { name: /lyrics/i })).toHaveValue(
+            '[Verse 1]\nNeon highway edited by user'
+        );
+        expect(mockGenerateLyrics).toHaveBeenCalledTimes(1);
+    });
+
+    it('submitting with explicit lyrics sends lyrics and vocal_language en to /api/generate', async () => {
+        mockGenerateLyrics.mockResolvedValue({
+            lyrics: '[Verse 1]\nDancing in the starlight\n\n[Chorus]\nStarlight night',
+        });
+        mockApiFetch.mockResolvedValue({
+            task_id: 'task-lyrics-789',
+            status: 'queued',
+        });
+
+        advanceToStep3WithLyrics('A funky disco track');
+
+        await waitFor(() => {
+            expect(screen.getByRole('textbox', { name: /lyrics/i })).toHaveValue(
+                '[Verse 1]\nDancing in the starlight\n\n[Chorus]\nStarlight night'
+            );
+        });
+
+        const submitButton = screen.getByRole('button', { name: /Generate Song/i });
+        fireEvent.click(submitButton);
+
+        await waitFor(() => {
+            expect(mockApiFetch).toHaveBeenCalledTimes(1);
+        });
+
+        const [url, options] = mockApiFetch.mock.calls[0];
+        expect(url).toBe('/api/generate');
+        const parsedBody = JSON.parse(options?.body as string);
+        expect(parsedBody).toEqual({
+            prompt: 'A funky disco track',
+            vocal_language: 'en',
+            lyrics: '[Verse 1]\nDancing in the starlight\n\n[Chorus]\nStarlight night',
+        });
+        expect(parsedBody.instrumental).toBeUndefined();
+        expect(mockOnJobCreated).toHaveBeenCalledWith('task-lyrics-789');
+    });
+
+    it('clearing the lyrics textarea falls back to instrumental submission', async () => {
+        mockGenerateLyrics.mockResolvedValue({
+            lyrics: '[Verse 1]\nSome lyrics to delete',
+        });
+        mockApiFetch.mockResolvedValue({
+            task_id: 'task-fallback-999',
+            status: 'queued',
+        });
+
+        advanceToStep3WithLyrics('Ambient electronic soundscape');
+
+        await waitFor(() => {
+            expect(screen.getByRole('textbox', { name: /lyrics/i })).toHaveValue(
+                '[Verse 1]\nSome lyrics to delete'
+            );
+        });
+
+        // Clear all text in textarea
+        const lyricsTextarea = screen.getByRole('textbox', { name: /lyrics/i });
+        fireEvent.change(lyricsTextarea, { target: { value: '   ' } });
+
+        const submitButton = screen.getByRole('button', { name: /Generate Song/i });
+        fireEvent.click(submitButton);
+
+        await waitFor(() => {
+            expect(mockApiFetch).toHaveBeenCalledTimes(1);
+        });
+
+        const [url, options] = mockApiFetch.mock.calls[0];
+        expect(url).toBe('/api/generate');
+        const parsedBody = JSON.parse(options?.body as string);
+        expect(parsedBody).toEqual({
+            prompt: 'Ambient electronic soundscape',
+            vocal_language: 'en',
+            lyrics: '[Instrumental]',
+            instrumental: true,
+        });
+        expect(mockOnJobCreated).toHaveBeenCalledWith('task-fallback-999');
+    });
+
+    it('degrades gracefully to manual entry when lyric generation fails with 503', async () => {
+        mockGenerateLyrics.mockRejectedValue(
+            new Error('AI lyric service is not configured')
+        );
+
+        advanceToStep3WithLyrics('A blues song about rainy days');
+
+        await waitFor(() => {
+            expect(screen.getByRole('alert')).toBeInTheDocument();
+            expect(
+                screen.getByText(/AI lyric service is not configured/i)
+            ).toBeInTheDocument();
+        });
+
+        // The textarea is still rendered for manual entry
+        const textarea = screen.getByRole('textbox', { name: /lyrics/i });
+        expect(textarea).toBeInTheDocument();
+        fireEvent.change(textarea, { target: { value: '[Verse 1]\nMy custom blues lyrics' } });
+        expect(textarea).toHaveValue('[Verse 1]\nMy custom blues lyrics');
     });
 });

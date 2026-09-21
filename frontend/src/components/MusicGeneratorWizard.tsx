@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useState, useEffect } from "react";
-import { apiFetch, GenerateRequest, GenerateResponse, getRandomExample } from "@/lib/api";
+import { apiFetch, GenerateRequest, GenerateResponse, getRandomExample, generateLyrics } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AlertCircle, ArrowLeft, ArrowRight, Check, Mic, Music, Radio, Sparkles } from "lucide-react";
@@ -36,6 +36,12 @@ export function MusicGeneratorWizard({ onJobCreated, gpuWarm = null }: MusicGene
     const [prompt, setPrompt] = useState("");
     const [songType, setSongType] = useState<SongType>("instrumental");
     const [preCachedLyrics, setPreCachedLyrics] = useState("");
+    const [lyrics, setLyrics] = useState("");
+    const [isLoadingLyrics, setIsLoadingLyrics] = useState(false);
+    const [lyricsError, setLyricsError] = useState<string | null>(null);
+    const [lastGeneratedPrompt, setLastGeneratedPrompt] = useState<string | null>(null);
+    const [examplePrompt, setExamplePrompt] = useState<string | null>(null);
+    const [isExampleModified, setIsExampleModified] = useState(false);
 
     const [isLoading, setIsLoading] = useState(false);
     const [isLoadingExample, setIsLoadingExample] = useState(false);
@@ -44,7 +50,7 @@ export function MusicGeneratorWizard({ onJobCreated, gpuWarm = null }: MusicGene
     const [loadingMessageIndex, setLoadingMessageIndex] = useState(0);
     const [elapsedSeconds, setElapsedSeconds] = useState(0);
 
-    const isBusy = isLoading || isLoadingExample;
+    const isBusy = isLoading || isLoadingExample || isLoadingLyrics;
 
     useEffect(() => {
         if (!isLoading) return;
@@ -68,12 +74,27 @@ export function MusicGeneratorWizard({ onJobCreated, gpuWarm = null }: MusicGene
         try {
             const example = await getRandomExample();
             setPrompt(example.prompt);
+            setExamplePrompt(example.prompt);
+            setIsExampleModified(false);
             setPreCachedLyrics(example.lyrics || "");
+            setLyrics(example.lyrics || "");
+            setLastGeneratedPrompt(example.prompt);
         } catch (err: unknown) {
             setError("Failed to fetch example prompt.");
             console.error(err);
         } finally {
             setIsLoadingExample(false);
+        }
+    };
+
+    const handlePromptChange = (val: string) => {
+        setPrompt(val);
+        if (examplePrompt && val.trim() !== examplePrompt.trim()) {
+            setIsExampleModified(true);
+            setPreCachedLyrics("");
+        }
+        if (lastGeneratedPrompt && val.trim() !== lastGeneratedPrompt.trim()) {
+            setLastGeneratedPrompt(null);
         }
     };
 
@@ -88,9 +109,40 @@ export function MusicGeneratorWizard({ onJobCreated, gpuWarm = null }: MusicGene
         setStep(2);
     };
 
-    const handleSelectSongType = (type: SongType) => {
+    const fetchAiLyrics = async (promptText: string) => {
+        setIsLoadingLyrics(true);
+        setLyricsError(null);
+        try {
+            const data = await generateLyrics(promptText);
+            setLyrics(data.lyrics);
+            setLastGeneratedPrompt(promptText);
+        } catch (err: unknown) {
+            console.error(err);
+            setLyricsError(
+                err instanceof Error
+                    ? err.message
+                    : "AI lyric service is unavailable. You can enter your own lyrics below or leave blank for instrumental."
+            );
+        } finally {
+            setIsLoadingLyrics(false);
+        }
+    };
+
+    const handleSelectSongType = async (type: SongType) => {
         setSongType(type);
         setStep(3);
+        if (type === "lyrics") {
+            const trimmedPrompt = prompt.trim();
+            if (preCachedLyrics && !isExampleModified) {
+                setLyrics(preCachedLyrics);
+                setLastGeneratedPrompt(trimmedPrompt);
+                return;
+            }
+            if (lyrics && lastGeneratedPrompt === trimmedPrompt) {
+                return;
+            }
+            await fetchAiLyrics(trimmedPrompt);
+        }
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -110,11 +162,16 @@ export function MusicGeneratorWizard({ onJobCreated, gpuWarm = null }: MusicGene
         setLastSubmitTime(now);
 
         try {
+            const trimmedPrompt = prompt.trim();
+            const trimmedLyrics = lyrics.trim();
+            const isInstrumentalSubmission =
+                songType === "instrumental" || (songType === "lyrics" && !trimmedLyrics);
+
             const payload: GenerateRequest = {
-                prompt: prompt.trim(),
+                prompt: trimmedPrompt,
                 vocal_language: "en",
-                lyrics: songType === "instrumental" ? "[Instrumental]" : (preCachedLyrics || undefined),
-                instrumental: songType === "instrumental" ? true : undefined,
+                lyrics: isInstrumentalSubmission ? "[Instrumental]" : trimmedLyrics,
+                instrumental: isInstrumentalSubmission ? true : undefined,
             };
 
             const data = await apiFetch<GenerateResponse>("/api/generate", {
@@ -133,6 +190,7 @@ export function MusicGeneratorWizard({ onJobCreated, gpuWarm = null }: MusicGene
             setIsLoading(false);
         }
     };
+
 
     return (
         <Card className="w-full max-w-2xl mx-auto">
@@ -187,7 +245,7 @@ export function MusicGeneratorWizard({ onJobCreated, gpuWarm = null }: MusicGene
                                 aria-label="Describe your song prompt"
                                 placeholder="Describe the sound, style, mood, instrumentation, and narrative theme. E.g., 'An energetic indie-rock song about chasing dreams in a neon city, driven by distorted guitars and punchy drums'..."
                                 value={prompt}
-                                onChange={(e) => setPrompt(e.target.value)}
+                                onChange={(e) => handlePromptChange(e.target.value)}
                                 disabled={isBusy}
                                 className="field-input flex min-h-[120px] w-full resize-y px-3 py-2.5 text-[13px] leading-relaxed"
                             />
@@ -333,6 +391,62 @@ export function MusicGeneratorWizard({ onJobCreated, gpuWarm = null }: MusicGene
                                 </div>
                             </div>
                         </div>
+
+                        {songType === "lyrics" && (
+                            <div className="space-y-4">
+                                {isLoadingLyrics ? (
+                                    <div className="space-y-3 rounded-xl border border-white/[0.08] bg-white/[0.02] p-5">
+                                        <div className="flex items-center gap-2 text-primary">
+                                            <Sparkles className="h-4 w-4 animate-spin text-primary" />
+                                            <span className="text-xs font-medium tracking-wide">
+                                                Writing song lyrics with AI...
+                                            </span>
+                                        </div>
+                                        <div className="space-y-2 animate-pulse pt-2">
+                                            <div className="h-3.5 bg-white/[0.08] rounded-md w-3/4"></div>
+                                            <div className="h-3.5 bg-white/[0.08] rounded-md w-1/2"></div>
+                                            <div className="h-3.5 bg-white/[0.08] rounded-md w-5/6"></div>
+                                            <div className="h-3.5 bg-white/[0.08] rounded-md w-2/3"></div>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <>
+                                        {lyricsError && (
+                                            <div
+                                                role="alert"
+                                                className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/[0.08] p-3 text-[13px] text-warning"
+                                            >
+                                                <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" strokeWidth={1.5} />
+                                                <span>{lyricsError}</span>
+                                            </div>
+                                        )}
+                                        <div className="space-y-2">
+                                            <div className="flex items-center justify-between">
+                                                <label htmlFor="lyrics-editor" className="field-label">
+                                                    Review & Edit Lyrics
+                                                </label>
+                                                <span className="font-mono text-[10px] tracking-widest text-muted-foreground">
+                                                    {lyrics.length}/5000
+                                                </span>
+                                            </div>
+                                            <textarea
+                                                id="lyrics-editor"
+                                                aria-label="Song lyrics"
+                                                value={lyrics}
+                                                onChange={(e) => setLyrics(e.target.value)}
+                                                disabled={isBusy}
+                                                placeholder="Enter or edit song lyrics... (Leave empty to generate as instrumental)"
+                                                className="field-input flex min-h-[180px] font-mono w-full resize-y px-3 py-2.5 text-[12px] leading-relaxed"
+                                            />
+                                            <p className="font-mono text-[10px] tracking-widest text-muted-foreground">
+                                                Structured stanzas with [Verse], [Chorus] tags. Clearing this box generates an instrumental.
+                                            </p>
+                                        </div>
+                                    </>
+                                )}
+                            </div>
+                        )}
+
 
                         {error && (
                             <div

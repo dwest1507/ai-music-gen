@@ -1181,3 +1181,76 @@ async def test_a_malformed_enrichment_response_still_generates(
     assert response.status_code == 202
 
     assert mock_acestep_client.submit_task.call_args[0][0]["prompt"] == "country"
+
+
+@pytest.mark.asyncio
+async def test_generate_lyrics_unconfigured_returns_503(async_client):
+    """When GROQ_API_KEY is not configured, POST /api/generate-lyrics returns 503."""
+    from app.main import app
+    from app.services.groq_service import GroqService
+
+    app.state.groq_service = GroqService(api_key="")
+
+    response = await async_client.post(
+        "/api/generate-lyrics", json={"prompt": "An upbeat indie pop song"}
+    )
+    assert response.status_code == 503
+    assert response.json()["detail"] == "AI lyric service is not configured"
+
+
+@pytest.mark.asyncio
+async def test_generate_lyrics_success(async_client):
+    """When configured, POST /api/generate-lyrics returns structured stanzas."""
+    from unittest.mock import AsyncMock, MagicMock
+    from app.main import app
+    from app.services.groq_service import GroqService
+
+    mock_service = MagicMock(spec=GroqService)
+    mock_service.is_configured = True
+    mock_service.generate_lyrics = AsyncMock(
+        return_value="[Verse 1]\nNeon lights in the rain\n\n[Chorus]\nRunning away"
+    )
+    app.state.groq_service = mock_service
+
+    response = await async_client.post(
+        "/api/generate-lyrics",
+        json={"prompt": "A synthwave track about nighttime driving"},
+    )
+    assert response.status_code == 200
+    assert response.json() == {
+        "lyrics": "[Verse 1]\nNeon lights in the rain\n\n[Chorus]\nRunning away"
+    }
+    mock_service.generate_lyrics.assert_awaited_once_with(
+        "A synthwave track about nighttime driving"
+    )
+
+
+@pytest.mark.asyncio
+async def test_generate_lyrics_validation_error(async_client):
+    """Empty or whitespace-only prompt returns 422."""
+    response = await async_client.post("/api/generate-lyrics", json={"prompt": "   "})
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_generate_lyrics_rate_limit_returns_429(async_client):
+    """/api/generate-lyrics allows 10 requests per minute, then 429s."""
+    from unittest.mock import AsyncMock, MagicMock
+    from app.main import app
+    from app.services.groq_service import GroqService
+
+    mock_service = MagicMock(spec=GroqService)
+    mock_service.is_configured = True
+    mock_service.generate_lyrics = AsyncMock(return_value="[Verse 1]\nSample lyrics")
+    app.state.groq_service = mock_service
+
+    for _ in range(10):
+        resp = await async_client.post(
+            "/api/generate-lyrics", json={"prompt": "A test prompt"}
+        )
+        assert resp.status_code == 200
+
+    resp = await async_client.post(
+        "/api/generate-lyrics", json={"prompt": "A test prompt"}
+    )
+    assert resp.status_code == 429

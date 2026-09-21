@@ -103,3 +103,14 @@ export interface ExampleResponse {
 export async function getRandomExample(): Promise<ExampleResponse> {
     return apiFetch<ExampleResponse>("/api/examples/random");
 }
+
+export interface GenerateLyricsResponse {
+    lyrics: string;
+}
+
+export async function generateLyrics(prompt: string): Promise<GenerateLyricsResponse> {
+    return apiFetch<GenerateLyricsResponse>("/api/generate-lyrics", {
+        method: "POST",
+        body: JSON.stringify({ prompt }),
+    });
+}

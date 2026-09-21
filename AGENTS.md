@@ -42,6 +42,8 @@ Copy `.env.example` to `.env` and populate:
 - `SESSION_SECRET` — Generate with `openssl rand -hex 32`
 - `FRONTEND_URL` — CORS allowed origin (default: `http://localhost:3000`)
 - `NEXT_PUBLIC_API_URL` — Backend URL visible to browser (default: `http://localhost:8000`)
+- `GROQ_API_KEY` — Optional, required for AI lyric generation (`openai/gpt-oss-120b`)
+
 
 ## Architecture
 
@@ -59,19 +61,20 @@ Browser → Next.js (Vercel, port 3000)
 - **Config:** `app/core/config.py` — Pydantic Settings, reads from env
 - **Rate limiting:** `app/core/limiter.py` — slowapi, keyed on client IP. Deliberately *not* the session cookie: the client supplies it, so rotating it minted a fresh allowance per request
 - **Warm state:** `app/core/warm_state.py` — in-memory dedupe window and monthly warm budget for GPU prewarm. Process-local, so correct only while the backend runs as a single instance (see `docs/adr/0001-speculative-gpu-prewarm.md`)
-- **Service:** `app/services/acestep_client.py` — all Modal API calls (httpx AsyncClient, HTTP/2, shared lifecycle)
+- **Service:** `app/services/acestep_client.py` — all Modal API calls (httpx AsyncClient, HTTP/2, shared lifecycle); `app/services/groq_service.py` — Groq LLM client for automated song lyric generation
 - **Routes:** `app/api/routes/generation.py` — all `/api/*` endpoints
 
 Key endpoints and their rate limits:
 | Endpoint | Limit |
 |---|---|
 | `POST /api/generate` | 5/min |
+| `POST /api/generate-lyrics` | 10/min |
 | `GET /api/jobs/{task_id}` | 60/min |
 | `GET /api/audio/{task_id}` | 20/min |
 | `GET /api/examples/random` | 10/min |
 | `POST /api/warmup` | 10/min |
 
-The `ACEStepClient` is instantiated once at startup (lifespan), shared across requests, and closed on shutdown.
+The `ACEStepClient` and `GroqService` are instantiated once at startup (lifespan), shared across requests, and closed on shutdown.
 
 **Examples:** Curated examples in `backend/examples/text2music/`; `GET /api/examples/random` filters strictly to English examples with lyrics.
 

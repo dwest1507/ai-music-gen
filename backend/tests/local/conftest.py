@@ -92,6 +92,13 @@ async def async_client(mock_acestep_client, fake_clock):
         clock=fake_clock, calendar_clock=fake_clock.calendar
     )
 
+    from app.services.groq_service import GroqService
+    from app.core.config import settings
+
+    app.state.groq_service = GroqService(
+        api_key=settings.GROQ_API_KEY, model=settings.GROQ_MODEL
+    )
+
     async with AsyncClient(
         transport=ASGITransport(app=app), base_url="http://test"
     ) as ac:

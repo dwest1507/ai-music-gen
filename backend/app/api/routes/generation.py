@@ -119,12 +119,32 @@ class ExampleResponse(BaseModel):
     instrumental: bool = False
 
 
+class GenerateLyricsRequest(BaseModel):
+    prompt: str = Field(..., min_length=1, max_length=1000)
+
+    @field_validator("prompt")
+    @classmethod
+    def validate_prompt_not_empty(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("Prompt cannot be empty or whitespace-only")
+        return v.strip()
+
+
+class GenerateLyricsResponse(BaseModel):
+    lyrics: str
+
+
 # ── Helpers ──────────────────────────────────────────────────────
 
 
 def _get_client(request: Request) -> ACEStepClient:
     """Retrieve the ACE-Step client from app state."""
     return request.app.state.acestep_client
+
+
+def _get_groq_service(request: Request):
+    """Retrieve the Groq service from app state if configured."""
+    return getattr(request.app.state, "groq_service", None)
 
 
 def get_session_id(request: Request, response: Response) -> str:
@@ -618,4 +638,31 @@ async def get_random_example(request: Request, response: Response):
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to fetch example: {str(e)}"
+        )
+
+
+@router.post("/generate-lyrics", response_model=GenerateLyricsResponse)
+@limiter.limit("10/minute")
+async def generate_lyrics(
+    request: Request,
+    response: Response,
+    body: GenerateLyricsRequest,
+):
+    """Generate structured song lyrics from a musical prompt using Groq."""
+    get_session_id(request, response)
+    groq_service = _get_groq_service(request)
+    if not groq_service or not groq_service.is_configured:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="AI lyric service is not configured",
+        )
+
+    try:
+        lyrics = await groq_service.generate_lyrics(body.prompt)
+        return GenerateLyricsResponse(lyrics=lyrics)
+    except Exception as e:
+        logger.exception("Failed to generate lyrics via Groq")
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Lyric generation failed: {str(e)}",
         )
