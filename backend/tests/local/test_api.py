@@ -1221,8 +1221,46 @@ async def test_generate_lyrics_success(async_client):
         "lyrics": "[Verse 1]\nNeon lights in the rain\n\n[Chorus]\nRunning away"
     }
     mock_service.generate_lyrics.assert_awaited_once_with(
-        "A synthwave track about nighttime driving",
+        "A synthwave track about nighttime driving", None
     )
+
+
+def _groq_service_returning(text: str):
+    """A configured GroqService whose network client is mocked at the SDK boundary."""
+    from unittest.mock import AsyncMock, MagicMock
+    from app.services.groq_service import GroqService
+
+    service = GroqService(api_key="gsk_test_key", model="openai/gpt-oss-120b")
+    choice = MagicMock()
+    choice.message.content = text
+    completion = MagicMock()
+    completion.choices = [choice]
+    service.client = MagicMock()
+    service.client.chat.completions.create = AsyncMock(return_value=completion)
+    return service
+
+
+@pytest.mark.asyncio
+async def test_generate_lyrics_regeneration_is_contrastive_and_hotter(async_client):
+    """Sending previous_lyrics asks Groq for different stanzas at temperature 0.85."""
+    from app.main import app
+
+    service = _groq_service_returning("[Verse 1]\nA brand new angle")
+    app.state.groq_service = service
+    previous = "[Verse 1]\nNeon lights in the rain"
+
+    response = await async_client.post(
+        "/api/generate-lyrics",
+        json={"prompt": "A synthwave track", "previous_lyrics": previous},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"lyrics": "[Verse 1]\nA brand new angle"}
+    kwargs = service.client.chat.completions.create.call_args.kwargs
+    assert kwargs["temperature"] == 0.85
+    sent = " ".join(m["content"] for m in kwargs["messages"])
+    assert previous in sent
+    assert "A synthwave track" in sent
 
 
 @pytest.mark.asyncio

@@ -251,7 +251,7 @@ describe('MusicGeneratorWizard - Step 3 Lyric Review & Generation', () => {
         advanceToStep3WithLyrics('An indie rock anthem about summer');
 
         expect(screen.getByText(/Writing song lyrics with AI/i)).toBeInTheDocument();
-        expect(mockGenerateLyrics).toHaveBeenCalledWith('An indie rock anthem about summer');
+        expect(mockGenerateLyrics).toHaveBeenCalledWith('An indie rock anthem about summer', undefined);
 
         // Resolve lyrics
         resolveLyrics!({ lyrics: '[Verse 1]\nSun on the pavement\n\n[Chorus]\nNever looking back' });
@@ -329,7 +329,8 @@ describe('MusicGeneratorWizard - Step 3 Lyric Review & Generation', () => {
         fireEvent.click(lyricsBtn);
 
         expect(mockGenerateLyrics).toHaveBeenCalledWith(
-            'An upbeat indie track with heavy synthesizer leads'
+            'An upbeat indie track with heavy synthesizer leads',
+            undefined
         );
 
         await waitFor(() => {
@@ -813,5 +814,220 @@ describe('MusicGeneratorWizard - Prompt Enhancement (#84)', () => {
         expect(promptBox()).toHaveValue('Make a pop punk song about being a dad');
         expect(screen.getByText(/3 left/i)).toBeInTheDocument();
         expect(enhanceButton()).toBeEnabled();
+    });
+});
+
+describe('MusicGeneratorWizard - Contrastive Lyric Regeneration (#86)', () => {
+    const mockOnJobCreated = vi.fn();
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+    });
+
+    const enterPromptAndContinue = (promptText: string) => {
+        fireEvent.change(screen.getByRole('textbox', { name: /prompt/i }), {
+            target: { value: promptText },
+        });
+        fireEvent.click(screen.getByRole('button', { name: /Next|Continue/i }));
+    };
+
+    const advanceToLyricsStep = async (promptText = 'A synthwave journey') => {
+        render(<MusicGeneratorWizard onJobCreated={mockOnJobCreated} />);
+        enterPromptAndContinue(promptText);
+        fireEvent.click(screen.getByRole('button', { name: /Song with Lyrics/i }));
+        await waitFor(() => {
+            expect(screen.getByRole('textbox', { name: /lyrics/i })).toBeInTheDocument();
+        });
+    };
+
+    const regenerateButton = () => screen.getByRole('button', { name: /Regenerate Lyrics/i });
+
+    it('Regenerate Lyrics replaces the lyrics with a new take contrasted against the previous one', async () => {
+        mockGenerateLyrics
+            .mockResolvedValueOnce({ lyrics: '[Verse 1]\nFirst take' })
+            .mockResolvedValueOnce({ lyrics: '[Verse 1]\nSecond take' });
+
+        await advanceToLyricsStep('A synthwave journey');
+        expect(regenerateButton()).toHaveTextContent(/3 left/i);
+
+        fireEvent.click(regenerateButton());
+
+        await waitFor(() => {
+            expect(screen.getByRole('textbox', { name: /lyrics/i })).toHaveValue(
+                '[Verse 1]\nSecond take'
+            );
+        });
+        expect(mockGenerateLyrics).toHaveBeenLastCalledWith(
+            'A synthwave journey',
+            '[Verse 1]\nFirst take'
+        );
+        expect(regenerateButton()).toHaveTextContent(/2 left/i);
+    });
+
+    it('caps regeneration at 3 attempts and then disables the button', async () => {
+        mockGenerateLyrics.mockImplementation(async () => ({ lyrics: '[Verse 1]\nA take' }));
+
+        await advanceToLyricsStep();
+
+        for (const expectedLeft of [3, 2, 1]) {
+            expect(regenerateButton()).toHaveTextContent(new RegExp(`${expectedLeft} left`, 'i'));
+            fireEvent.click(regenerateButton());
+            await waitFor(() =>
+                expect(regenerateButton()).toHaveTextContent(new RegExp(`${expectedLeft - 1} left`, 'i'))
+            );
+        }
+
+        expect(regenerateButton()).toHaveTextContent(/0 left/i);
+        expect(regenerateButton()).toBeDisabled();
+        // 1 automatic take + 3 regenerations
+        expect(mockGenerateLyrics).toHaveBeenCalledTimes(4);
+    });
+
+    it('resets the regeneration allowance to 3 when the prompt changes in Step 1', async () => {
+        mockGenerateLyrics.mockImplementation(async () => ({ lyrics: '[Verse 1]\nA take' }));
+
+        await advanceToLyricsStep('A synthwave journey');
+        fireEvent.click(regenerateButton());
+        await waitFor(() => expect(regenerateButton()).toHaveTextContent(/2 left/i));
+
+        // Back to Step 1 and reword the prompt
+        fireEvent.click(screen.getByRole('button', { name: /Back/i }));
+        fireEvent.click(screen.getByRole('button', { name: /Back/i }));
+        enterPromptAndContinue('A synthwave journey through a rainy city');
+        fireEvent.click(screen.getByRole('button', { name: /Song with Lyrics/i }));
+
+        await waitFor(() => {
+            expect(regenerateButton()).toHaveTextContent(/3 left/i);
+        });
+    });
+
+    it('keeps the remaining allowance when the prompt is left unchanged', async () => {
+        mockGenerateLyrics.mockImplementation(async () => ({ lyrics: '[Verse 1]\nA take' }));
+
+        await advanceToLyricsStep('A synthwave journey');
+        fireEvent.click(regenerateButton());
+        await waitFor(() => expect(regenerateButton()).toHaveTextContent(/2 left/i));
+
+        fireEvent.click(screen.getByRole('button', { name: /Back/i }));
+        fireEvent.click(screen.getByRole('button', { name: /Back/i }));
+        fireEvent.click(screen.getByRole('button', { name: /Next|Continue/i }));
+        fireEvent.click(screen.getByRole('button', { name: /Song with Lyrics/i }));
+
+        expect(regenerateButton()).toHaveTextContent(/2 left/i);
+    });
+
+    describe('protecting manual edits', () => {
+        const editLyrics = (text: string) =>
+            fireEvent.change(screen.getByRole('textbox', { name: /lyrics/i }), {
+                target: { value: text },
+            });
+
+        it('asks for confirmation before regenerating over edited lyrics and keeps the edits if declined', async () => {
+            mockGenerateLyrics.mockResolvedValueOnce({ lyrics: '[Verse 1]\nFirst take' });
+
+            await advanceToLyricsStep();
+            editLyrics('[Verse 1]\nMy own words');
+            fireEvent.click(regenerateButton());
+
+            expect(screen.getByText(/discard your edits/i)).toBeInTheDocument();
+            expect(mockGenerateLyrics).toHaveBeenCalledTimes(1);
+
+            fireEvent.click(screen.getByRole('button', { name: /Keep my edits/i }));
+
+            expect(screen.queryByText(/discard your edits/i)).not.toBeInTheDocument();
+            expect(screen.getByRole('textbox', { name: /lyrics/i })).toHaveValue('[Verse 1]\nMy own words');
+            expect(mockGenerateLyrics).toHaveBeenCalledTimes(1);
+            expect(regenerateButton()).toHaveTextContent(/3 left/i);
+        });
+
+        it('regenerates against the last AI take once the visitor confirms discarding their edits', async () => {
+            mockGenerateLyrics
+                .mockResolvedValueOnce({ lyrics: '[Verse 1]\nFirst take' })
+                .mockResolvedValueOnce({ lyrics: '[Verse 1]\nSecond take' });
+
+            await advanceToLyricsStep();
+            editLyrics('[Verse 1]\nMy own words');
+            fireEvent.click(regenerateButton());
+            fireEvent.click(screen.getByRole('button', { name: /Discard edits & regenerate/i }));
+
+            await waitFor(() => {
+                expect(screen.getByRole('textbox', { name: /lyrics/i })).toHaveValue('[Verse 1]\nSecond take');
+            });
+            expect(mockGenerateLyrics).toHaveBeenLastCalledWith('A synthwave journey', '[Verse 1]\nFirst take');
+            expect(screen.queryByText(/discard your edits/i)).not.toBeInTheDocument();
+        });
+
+        it('regenerates immediately when the lyrics are untouched', async () => {
+            mockGenerateLyrics
+                .mockResolvedValueOnce({ lyrics: '[Verse 1]\nFirst take' })
+                .mockResolvedValueOnce({ lyrics: '[Verse 1]\nSecond take' });
+
+            await advanceToLyricsStep();
+            fireEvent.click(regenerateButton());
+
+            expect(screen.queryByText(/discard your edits/i)).not.toBeInTheDocument();
+            await waitFor(() => expect(mockGenerateLyrics).toHaveBeenCalledTimes(2));
+        });
+    });
+
+    describe('with an example prompt', () => {
+        const example = {
+            prompt: 'An upbeat indie track with sparkling guitars',
+            lyrics: '[Verse 1]\nWalking down the sunny street',
+            vocal_language: 'en',
+            instrumental: false,
+        };
+
+        const loadExampleAndOpenLyrics = async () => {
+            mockGetRandomExample.mockResolvedValue(example);
+            render(<MusicGeneratorWizard onJobCreated={mockOnJobCreated} />);
+            fireEvent.click(screen.getByRole('button', { name: /Try an Example/i }));
+            await waitFor(() => {
+                expect(screen.getByRole('textbox', { name: /prompt/i })).toHaveValue(example.prompt);
+            });
+            fireEvent.click(screen.getByRole('button', { name: /Next|Continue/i }));
+            fireEvent.click(screen.getByRole('button', { name: /Song with Lyrics/i }));
+        };
+
+        it('regenerates from the example lyrics and keeps the new take after navigating back and forth', async () => {
+            mockGenerateLyrics.mockResolvedValueOnce({ lyrics: '[Verse 1]\nRegenerated take' });
+
+            await loadExampleAndOpenLyrics();
+            expect(screen.getByRole('textbox', { name: /lyrics/i })).toHaveValue(example.lyrics);
+
+            fireEvent.click(regenerateButton());
+            await waitFor(() => {
+                expect(screen.getByRole('textbox', { name: /lyrics/i })).toHaveValue('[Verse 1]\nRegenerated take');
+            });
+            expect(mockGenerateLyrics).toHaveBeenCalledWith(example.prompt, example.lyrics);
+
+            fireEvent.click(screen.getByRole('button', { name: /Back/i }));
+            fireEvent.click(screen.getByRole('button', { name: /Back/i }));
+            fireEvent.click(screen.getByRole('button', { name: /Next|Continue/i }));
+            fireEvent.click(screen.getByRole('button', { name: /Song with Lyrics/i }));
+
+            expect(screen.getByRole('textbox', { name: /lyrics/i })).toHaveValue('[Verse 1]\nRegenerated take');
+            expect(regenerateButton()).toHaveTextContent(/2 left/i);
+        });
+
+        it('loading a new example resets the regeneration allowance', async () => {
+            mockGenerateLyrics.mockResolvedValue({ lyrics: '[Verse 1]\nA take' });
+
+            await advanceToLyricsStep('A synthwave journey');
+            fireEvent.click(regenerateButton());
+            await waitFor(() => expect(regenerateButton()).toHaveTextContent(/2 left/i));
+
+            fireEvent.click(screen.getByRole('button', { name: /Back/i }));
+            fireEvent.click(screen.getByRole('button', { name: /Back/i }));
+            mockGetRandomExample.mockResolvedValue(example);
+            fireEvent.click(screen.getByRole('button', { name: /Try an Example/i }));
+            await waitFor(() => {
+                expect(screen.getByRole('textbox', { name: /prompt/i })).toHaveValue(example.prompt);
+            });
+            fireEvent.click(screen.getByRole('button', { name: /Next|Continue/i }));
+            fireEvent.click(screen.getByRole('button', { name: /Song with Lyrics/i }));
+
+            expect(regenerateButton()).toHaveTextContent(/3 left/i);
+        });
     });
 });

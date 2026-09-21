@@ -108,10 +108,16 @@ export interface GenerateLyricsResponse {
     lyrics: string;
 }
 
-export async function generateLyrics(prompt: string): Promise<GenerateLyricsResponse> {
+/** Pass previousLyrics on a regeneration so the backend writes a contrasting take. */
+export async function generateLyrics(
+    prompt: string,
+    previousLyrics?: string,
+): Promise<GenerateLyricsResponse> {
     return apiFetch<GenerateLyricsResponse>("/api/generate-lyrics", {
         method: "POST",
-        body: JSON.stringify({ prompt }),
+        body: JSON.stringify(
+            previousLyrics ? { prompt, previous_lyrics: previousLyrics } : { prompt },
+        ),
     });
 }
 

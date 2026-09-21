@@ -5,7 +5,7 @@ import { useState, useEffect } from "react";
 import { apiFetch, GenerateRequest, GenerateResponse, getRandomExample, generateLyrics, formatLyrics, enhancePrompt, ApiError } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { AlertCircle, ArrowLeft, ArrowRight, Check, Mic, Music, Radio, Sparkles } from "lucide-react";
+import { AlertCircle, ArrowLeft, ArrowRight, Check, Mic, Music, Radio, RefreshCw, Sparkles } from "lucide-react";
 import { z } from "zod";
 
 const LOADING_MESSAGES = [
@@ -23,6 +23,9 @@ const LOADING_MESSAGES = [
 
 /** Enhancements allowed per song; the backend refuses a fourth. */
 const MAX_ENHANCE_ATTEMPTS = 3;
+
+/** Lyric regenerations allowed per unique prompt. */
+const MAX_LYRICS_REGEN_ATTEMPTS = 3;
 
 const promptSchema = z.string().min(3, "Prompt must be at least 3 characters").max(1000, "Prompt must be less than 1000 characters");
 
@@ -47,6 +50,8 @@ export function MusicGeneratorWizard({ onJobCreated, gpuWarm = null }: MusicGene
     const [isExampleModified, setIsExampleModified] = useState(false);
     const [pristineLyrics, setPristineLyrics] = useState("");
     const [isFormattingLyrics, setIsFormattingLyrics] = useState(false);
+    const [lyricsRegenAttemptsLeft, setLyricsRegenAttemptsLeft] = useState(MAX_LYRICS_REGEN_ATTEMPTS);
+    const [isConfirmingRegenerate, setIsConfirmingRegenerate] = useState(false);
     const [enhanceAttemptsLeft, setEnhanceAttemptsLeft] = useState(MAX_ENHANCE_ATTEMPTS);
     const [originalPrompt, setOriginalPrompt] = useState<string | null>(null);
     const [isEnhancing, setIsEnhancing] = useState(false);
@@ -91,6 +96,7 @@ export function MusicGeneratorWizard({ onJobCreated, gpuWarm = null }: MusicGene
             setLyrics(example.lyrics || "");
             setPristineLyrics(example.lyrics || "");
             setLastGeneratedPrompt(example.prompt);
+            setLyricsRegenAttemptsLeft(MAX_LYRICS_REGEN_ATTEMPTS);
         } catch (err: unknown) {
             setError("Failed to fetch example prompt.");
             console.error(err);
@@ -107,6 +113,7 @@ export function MusicGeneratorWizard({ onJobCreated, gpuWarm = null }: MusicGene
         }
         if (lastGeneratedPrompt && val.trim() !== lastGeneratedPrompt.trim()) {
             setLastGeneratedPrompt(null);
+            setLyricsRegenAttemptsLeft(MAX_LYRICS_REGEN_ATTEMPTS);
         }
     };
 
@@ -154,14 +161,15 @@ export function MusicGeneratorWizard({ onJobCreated, gpuWarm = null }: MusicGene
         setStep(2);
     };
 
-    const fetchAiLyrics = async (promptText: string) => {
+    const fetchAiLyrics = async (promptText: string, previousLyrics?: string): Promise<boolean> => {
         setIsLoadingLyrics(true);
         setLyricsError(null);
         try {
-            const data = await generateLyrics(promptText);
+            const data = await generateLyrics(promptText, previousLyrics);
             setLyrics(data.lyrics);
             setPristineLyrics(data.lyrics);
             setLastGeneratedPrompt(promptText);
+            return true;
         } catch (err: unknown) {
             console.error(err);
             setLyricsError(
@@ -169,9 +177,28 @@ export function MusicGeneratorWizard({ onJobCreated, gpuWarm = null }: MusicGene
                     ? err.message
                     : "AI lyric service is unavailable. You can enter your own lyrics below or leave blank for instrumental."
             );
+            return false;
         } finally {
             setIsLoadingLyrics(false);
         }
+    };
+
+    const regenerateLyrics = async () => {
+        setIsConfirmingRegenerate(false);
+        const succeeded = await fetchAiLyrics(prompt.trim(), pristineLyrics || undefined);
+        if (succeeded) {
+            setLyricsRegenAttemptsLeft((left) => left - 1);
+            // The example's premade lyrics must not be restored over the new take.
+            setPreCachedLyrics("");
+        }
+    };
+
+    const handleRegenerateLyrics = () => {
+        if (lyrics.trim() !== pristineLyrics.trim()) {
+            setIsConfirmingRegenerate(true);
+            return;
+        }
+        void regenerateLyrics();
     };
 
     const handleSelectSongType = async (type: SongType) => {
@@ -510,6 +537,29 @@ export function MusicGeneratorWizard({ onJobCreated, gpuWarm = null }: MusicGene
                                     </div>
                                 ) : (
                                     <>
+                                        {isConfirmingRegenerate && (
+                                            <div
+                                                role="alert"
+                                                className="flex flex-col gap-3 rounded-lg border border-warning/30 bg-warning/[0.08] p-3 text-[13px] text-warning sm:flex-row sm:items-center sm:justify-between"
+                                            >
+                                                <span>
+                                                    Regenerating will discard your edits to these lyrics.
+                                                </span>
+                                                <div className="flex items-center gap-2">
+                                                    <Button
+                                                        type="button"
+                                                        variant="outline"
+                                                        size="sm"
+                                                        onClick={() => setIsConfirmingRegenerate(false)}
+                                                    >
+                                                        Keep my edits
+                                                    </Button>
+                                                    <Button type="button" size="sm" onClick={regenerateLyrics}>
+                                                        Discard edits & regenerate
+                                                    </Button>
+                                                </div>
+                                            </div>
+                                        )}
                                         {lyricsError && (
                                             <div
                                                 role="alert"
@@ -524,9 +574,25 @@ export function MusicGeneratorWizard({ onJobCreated, gpuWarm = null }: MusicGene
                                                 <label htmlFor="lyrics-editor" className="field-label">
                                                     Review & Edit Lyrics
                                                 </label>
-                                                <span className="font-mono text-[10px] tracking-widest text-muted-foreground">
-                                                    {lyrics.length}/5000
-                                                </span>
+                                                <div className="flex items-center gap-3">
+                                                    <Button
+                                                        type="button"
+                                                        variant="outline"
+                                                        size="sm"
+                                                        onClick={handleRegenerateLyrics}
+                                                        disabled={isBusy || lyricsRegenAttemptsLeft <= 0}
+                                                        className="flex items-center gap-1.5"
+                                                    >
+                                                        <RefreshCw className="w-3 h-3" strokeWidth={1.5} />
+                                                        Regenerate Lyrics
+                                                        <span className="font-mono text-[10px] tracking-widest text-muted-foreground">
+                                                            {lyricsRegenAttemptsLeft} left
+                                                        </span>
+                                                    </Button>
+                                                    <span className="font-mono text-[10px] tracking-widest text-muted-foreground">
+                                                        {lyrics.length}/5000
+                                                    </span>
+                                                </div>
                                             </div>
                                             <textarea
                                                 id="lyrics-editor"

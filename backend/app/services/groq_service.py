@@ -41,6 +41,18 @@ Requirements:
 4. Output ONLY the rewritten prompt. Do NOT include explanations, preamble, quotation marks or commentary.
 """
 
+REGENERATION_TEMPERATURE = 0.85
+
+REGENERATION_INSTRUCTIONS = """The user was not satisfied with these earlier lyrics:
+
+<previous_lyrics>
+{previous_lyrics}
+</previous_lyrics>
+
+Write a distinctly different take on the same description. Use a different narrative
+angle, fresh metaphors and imagery, a different rhyme scheme, and new hooks. Do NOT
+reuse lines, rhymes, or the chorus hook from the earlier lyrics."""
+
 
 class GroqService:
     """Encapsulates interaction with Groq API for lyric writing and formatting tasks."""
@@ -83,24 +95,34 @@ class GroqService:
         content = response.choices[0].message.content or ""
         return content.strip()
 
-    async def generate_lyrics(self, prompt: str) -> str:
+    async def generate_lyrics(
+        self, prompt: str, previous_lyrics: Optional[str] = None
+    ) -> str:
         """Generate structured song stanzas from a musical prompt.
 
         Args:
             prompt: The user's description of style, mood, and topic.
+            previous_lyrics: Lyrics from an earlier take. When given, the model is
+                told to write something contrasting and sampled at a higher
+                temperature for more varied phrasing.
 
         Returns:
             Formatted lyrics text with section header tags.
         """
+        user_content = f"Write song lyrics based on this description:\n{prompt}"
+        temperature = 0.7
+        if previous_lyrics and previous_lyrics.strip():
+            user_content += "\n\n" + REGENERATION_INSTRUCTIONS.format(
+                previous_lyrics=previous_lyrics.strip()
+            )
+            temperature = REGENERATION_TEMPERATURE
+
         return await self._chat_completion(
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT_LYRICS},
-                {
-                    "role": "user",
-                    "content": f"Write song lyrics based on this description:\n{prompt}",
-                },
+                {"role": "user", "content": user_content},
             ],
-            temperature=0.7,
+            temperature=temperature,
         )
 
     async def format_lyrics(self, lyrics: str) -> str:

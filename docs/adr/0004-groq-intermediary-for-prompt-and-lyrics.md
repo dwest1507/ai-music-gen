@@ -34,6 +34,15 @@ textarea in Step 3 of the progressive creation wizard before generation is submi
     AI/example output skip the call entirely. If formatting fails, is rate limited, or exceeds
     a 10-second client-side timeout, the wizard silently falls back to submitting the raw
     edited text.
+  - **Contrastive Lyric Regeneration**: Step 3 offers a "Regenerate Lyrics" button that calls
+    `POST /api/generate-lyrics` again with `previous_lyrics`. The backend asks Groq for a
+    distinctly different take (new narrative angle, imagery, rhyme scheme, and hooks; no
+    reused lines) and raises the sampling temperature from `0.7` to `0.85`. The wizard allows
+    three regenerations per unique prompt, shown as a remaining-attempts badge; the counter
+    resets when the prompt changes or a new example loads, and survives back/forward
+    navigation otherwise. The cap lives in the wizard only, since the backend is stateless.
+    Regenerating over hand-edited lyrics first asks for inline confirmation, and the contrast
+    is taken against the last AI take rather than the discarded edits.
   - **Prompt Enhancement** (`POST /api/enhance-prompt`): Step 1 offers an "Enhance Prompt"
     button that rewrites the prompt in place with tempo, instrumentation, and mood detail.
     Enhancement is capped at three attempts per song, tracked in the wizard and mirrored by a

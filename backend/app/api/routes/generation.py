@@ -121,6 +121,7 @@ class ExampleResponse(BaseModel):
 
 class GenerateLyricsRequest(BaseModel):
     prompt: str = Field(..., min_length=1, max_length=1000)
+    previous_lyrics: Optional[str] = Field(None, max_length=5000)
 
     @field_validator("prompt")
     @classmethod
@@ -684,7 +685,11 @@ async def generate_lyrics(
     response: Response,
     body: GenerateLyricsRequest,
 ):
-    """Generate structured song lyrics from a musical prompt using Groq."""
+    """Generate structured song lyrics from a musical prompt using Groq.
+
+    With ``previous_lyrics`` set, writes a contrasting regeneration at a higher
+    temperature instead of a first take.
+    """
     get_session_id(request, response)
     groq_service = _get_groq_service(request)
     if not groq_service or not groq_service.is_configured:
@@ -694,7 +699,7 @@ async def generate_lyrics(
         )
 
     try:
-        lyrics = await groq_service.generate_lyrics(body.prompt)
+        lyrics = await groq_service.generate_lyrics(body.prompt, body.previous_lyrics)
         return GenerateLyricsResponse(lyrics=lyrics)
     except Exception as e:
         logger.exception("Failed to generate lyrics via Groq")

@@ -118,9 +118,15 @@ Generates structured song lyrics (`[Verse]`, `[Chorus]`, etc.) using Groq LLM ba
 **Request Body:**
 ```json
 {
-  "prompt": "an upbeat synthwave song about neon nights"
+  "prompt": "an upbeat synthwave song about neon nights",
+  "previous_lyrics": null
 }
 ```
+
+| Field | Notes |
+|---|---|
+| `prompt` | Song description (1-1000 chars). |
+| `previous_lyrics` | Optional, up to 5000 chars. Send the lyrics from an earlier take to request a regeneration: the model is told to write a contrasting take (different narrative angle, imagery, rhyme scheme, and hooks, with no reused lines) and samples at a higher temperature (`0.85` instead of `0.7`). |
 
 **Response (200 OK):**
 ```json
@@ -128,6 +134,8 @@ Generates structured song lyrics (`[Verse]`, `[Chorus]`, etc.) using Groq LLM ba
   "lyrics": "[Verse 1]\nCruising down the electric avenue..."
 }
 ```
+
+The three-regeneration cap per prompt is enforced in the wizard, not by the backend, which is stateless; the rate limit above is the server-side bound.
 
 ### `POST /api/format-lyrics`
 Formats user-written or edited lyrics into structured sections with header tags (`[Verse]`, `[Chorus]`, `[Bridge]`, etc.) without altering any of the user's words. Used as an auto-formatting step before generation when lyrics have been manually edited.
