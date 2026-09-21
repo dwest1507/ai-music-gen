@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.0](https://github.com/dwest1507/ai-music-gen/compare/ai-music-gen-v0.11.0...ai-music-gen-v0.12.0) (2026-09-21)
+
+
+### Features
+
+* **wizard:** add multi-step song creation wizard with Groq songwriter pipeline ([#88](https://github.com/dwest1507/ai-music-gen/issues/88)) ([e792057](https://github.com/dwest1507/ai-music-gen/commit/e792057dbf97061eccd171c2dce9e2a53ff8749e))
+
 ## [0.11.0](https://github.com/dwest1507/ai-music-gen/compare/ai-music-gen-v0.10.0...ai-music-gen-v0.11.0) (2026-09-05)
 
 
