@@ -97,3 +97,98 @@ describe('getRandomExample', () => {
         expect(result.prompt).toBe('A simple track');
     });
 });
+
+describe('generateLyrics', () => {
+    const originalFetch = global.fetch;
+
+    beforeEach(() => {
+        global.fetch = vi.fn();
+    });
+
+    afterEach(() => {
+        global.fetch = originalFetch;
+    });
+
+    it('calls POST /api/generate-lyrics with prompt', async () => {
+        const mockResponse = { lyrics: '[Verse 1]\nNew lyrics' };
+        (global.fetch as Mock).mockResolvedValue({
+            ok: true,
+            status: 200,
+            json: async () => mockResponse,
+        });
+
+        const { generateLyrics } = await import('@/lib/api');
+        const result = await generateLyrics('indie song');
+
+        expect(global.fetch).toHaveBeenCalledWith(
+            'http://localhost:8000/api/generate-lyrics',
+            expect.objectContaining({
+                method: 'POST',
+                body: JSON.stringify({
+                    prompt: 'indie song',
+                }),
+            })
+        );
+        expect(result).toEqual(mockResponse);
+    });
+});
+
+describe('formatLyrics', () => {
+    const originalFetch = global.fetch;
+
+    beforeEach(() => {
+        global.fetch = vi.fn();
+    });
+
+    afterEach(() => {
+        global.fetch = originalFetch;
+    });
+
+    it('calls POST /api/format-lyrics with lyrics', async () => {
+        const mockResponse = { lyrics: '[Verse 1]\nFormatted lyrics' };
+        (global.fetch as Mock).mockResolvedValue({
+            ok: true,
+            status: 200,
+            json: async () => mockResponse,
+        });
+
+        const { formatLyrics } = await import('@/lib/api');
+        const result = await formatLyrics('raw unformatted lyrics');
+
+        expect(global.fetch).toHaveBeenCalledWith(
+            'http://localhost:8000/api/format-lyrics',
+            expect.objectContaining({
+                method: 'POST',
+                body: JSON.stringify({
+                    lyrics: 'raw unformatted lyrics',
+                }),
+            })
+        );
+        expect(result).toEqual(mockResponse);
+    });
+
+    it('rejects instead of hanging when the backend never answers', async () => {
+        vi.useFakeTimers();
+        try {
+            // A fetch that only settles when its request is aborted.
+            (global.fetch as Mock).mockImplementation(
+                (_url: string, init: RequestInit) =>
+                    new Promise((_resolve, reject) => {
+                        init.signal?.addEventListener('abort', () => reject(init.signal?.reason));
+                    })
+            );
+
+            const { formatLyrics } = await import('@/lib/api');
+            const outcome = formatLyrics('raw unformatted lyrics').then(
+                () => 'resolved',
+                () => 'rejected'
+            );
+
+            await vi.advanceTimersByTimeAsync(15_000);
+
+            expect(await outcome).toBe('rejected');
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+});

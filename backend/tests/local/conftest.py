@@ -38,7 +38,9 @@ async def mock_acestep_client():
     client.health_check = AsyncMock(return_value={"status": "ok"})
     client.list_models = AsyncMock()
     client.get_random_sample = AsyncMock()
-    client.format_input = AsyncMock()
+    # Default to a caption-less response so enrichment falls back to the original
+    # prompt; tests that exercise enrichment set their own return_value.
+    client.format_input = AsyncMock(return_value={})
     return client
 
 
@@ -88,6 +90,13 @@ async def async_client(mock_acestep_client, fake_clock):
     # ordering — the same hazard reset_rate_limiter guards against.
     app.state.warm_state = WarmState(
         clock=fake_clock, calendar_clock=fake_clock.calendar
+    )
+
+    from app.services.groq_service import GroqService
+    from app.core.config import settings
+
+    app.state.groq_service = GroqService(
+        api_key=settings.GROQ_API_KEY, model=settings.GROQ_MODEL
     )
 
     async with AsyncClient(

@@ -12,6 +12,7 @@ from app.core.limiter import limiter
 from app.core.warm_state import WarmState
 from app.api.routes import generation
 from app.services.acestep_client import ACEStepClient
+from app.services.groq_service import GroqService
 
 # Ensure app-level loggers are visible (uvicorn only configures its own loggers)
 logging.basicConfig(level=logging.INFO, format="%(levelname)s:%(name)s:%(message)s")
@@ -20,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Manage the lifecycle of the shared httpx client and ACE-Step client."""
+    """Manage the lifecycle of the shared httpx client, ACE-Step client, and Groq service."""
     # The default keepalive expiry of 5s is shorter than our own polling
     # intervals, so connections to Modal were being torn down and re-handshaked
     # between consecutive polls of the same Task.
@@ -28,7 +29,18 @@ async def lifespan(app: FastAPI):
     async with httpx.AsyncClient(http2=True, limits=limits) as http_client:
         app.state.acestep_client = ACEStepClient(http_client)
         app.state.warm_state = WarmState()
-        yield
+        # AsyncGroq owns its own connection pool, so the service is built once here
+        # and closed below rather than per request. Constructing it at module scope
+        # too would orphan that pool the moment this line overwrote it.
+        groq_service = GroqService(
+            api_key=settings.GROQ_API_KEY,
+            model=settings.GROQ_MODEL,
+        )
+        app.state.groq_service = groq_service
+        try:
+            yield
+        finally:
+            await groq_service.close()
 
 
 app = FastAPI(
@@ -36,6 +48,7 @@ app = FastAPI(
     openapi_url=f"{settings.API_V1_STR}/openapi.json",
     lifespan=lifespan,
 )
+
 
 # CORS
 if settings.FRONTEND_URL:

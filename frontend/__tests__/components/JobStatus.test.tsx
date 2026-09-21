@@ -203,4 +203,63 @@ describe('JobStatus polling under rate limiting', () => {
         await vi.advanceTimersByTimeAsync(11000);
         expect(mockApiFetch).toHaveBeenCalledTimes(2);
     });
+
+    it('shows the lyrics the model actually sang', async () => {
+        // Everything upstream of this rewrote the visitor's words invisibly. Showing
+        // what was actually used is how that stays visible if it ever regresses.
+        mockApiFetch.mockResolvedValue({
+            task_id: 'test-job-123',
+            status: 'completed',
+            audio_url: '/url1.mp3',
+            metadata: {
+                prompt: 'A warm country ballad with pedal steel',
+                lyrics: '[Verse]\nHe taught me how to drive\n\n[Chorus]\nI never said thanks',
+            },
+        });
+
+        render(<JobStatus jobId="test-job-123" />);
+
+        await waitFor(() => {
+            expect(screen.getByText('Generation Complete!')).toBeInTheDocument();
+        });
+
+        expect(screen.getByText(/He taught me how to drive/)).toBeInTheDocument();
+        expect(screen.getByText(/I never said thanks/)).toBeInTheDocument();
+    });
+
+    it('shows no lyrics section for an instrumental result', async () => {
+        mockApiFetch.mockResolvedValue({
+            task_id: 'test-job-123',
+            status: 'completed',
+            audio_url: '/url1.mp3',
+            metadata: { prompt: 'A solo piano piece', lyrics: '[Instrumental]' },
+        });
+
+        render(<JobStatus jobId="test-job-123" />);
+
+        await waitFor(() => {
+            expect(screen.getByText('Generation Complete!')).toBeInTheDocument();
+        });
+
+        expect(screen.queryByText(/Lyrics used/i)).not.toBeInTheDocument();
+    });
+
+    it('labels the style caption as the one the model was given', async () => {
+        // Enrichment means this can differ from what the visitor typed. Unlabelled, a
+        // caption they do not recognise reads as a bug rather than as the expansion.
+        mockApiFetch.mockResolvedValue({
+            task_id: 'test-job-123',
+            status: 'completed',
+            audio_url: '/url1.mp3',
+            metadata: { prompt: 'A warm mid-tempo country ballad with pedal steel' },
+        });
+
+        render(<JobStatus jobId="test-job-123" />);
+
+        await waitFor(() => {
+            expect(screen.getByText('Generation Complete!')).toBeInTheDocument();
+        });
+
+        expect(screen.getByText(/Style used/i)).toBeInTheDocument();
+    });
 });

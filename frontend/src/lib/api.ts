@@ -54,8 +54,13 @@ export async function apiFetch<T>(endpoint: string, options: FetchOptions = {}):
 // --- Shared API Types ---
 
 export interface GenerateRequest {
+    /** Musical style: instrumentation, mood, production. Becomes the ACE-Step caption. */
     prompt: string;
+    /** What the song is about. Drives lyric generation only, never the caption. */
+    topic?: string;
     genre?: string;
+    /** Seconds. Omitted lets the 5Hz LM choose, which can cut long lyrics short. */
+    duration?: number;
     lyrics?: string;
     vocal_language?: string;
     instrumental?: boolean;
@@ -97,4 +102,66 @@ export interface ExampleResponse {
 
 export async function getRandomExample(): Promise<ExampleResponse> {
     return apiFetch<ExampleResponse>("/api/examples/random");
+}
+
+export interface GenerateLyricsResponse {
+    lyrics: string;
+}
+
+/** Pass previousLyrics on a regeneration so the backend writes a contrasting take. */
+export async function generateLyrics(
+    prompt: string,
+    previousLyrics?: string,
+): Promise<GenerateLyricsResponse> {
+    return apiFetch<GenerateLyricsResponse>("/api/generate-lyrics", {
+        method: "POST",
+        body: JSON.stringify(
+            previousLyrics ? { prompt, previous_lyrics: previousLyrics } : { prompt },
+        ),
+    });
+}
+
+export interface FormatLyricsRequest {
+    lyrics: string;
+}
+
+export interface FormatLyricsResponse {
+    lyrics: string;
+}
+
+/** Formatting is a nicety; give up quickly so it never holds up generation. */
+export const FORMAT_LYRICS_TIMEOUT_MS = 10_000;
+
+export async function formatLyrics(lyrics: string): Promise<FormatLyricsResponse> {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), FORMAT_LYRICS_TIMEOUT_MS);
+    try {
+        return await apiFetch<FormatLyricsResponse>("/api/format-lyrics", {
+            method: "POST",
+            body: JSON.stringify({ lyrics }),
+            signal: controller.signal,
+        });
+    } finally {
+        clearTimeout(timer);
+    }
+}
+
+export interface EnhancePromptResponse {
+    prompt: string;
+}
+
+/**
+ * @param prompt The text currently in the prompt box.
+ * @param attempt 1-based enhancement attempt for this song; later ones vary the original.
+ * @param originalPrompt What the visitor typed before any enhancement.
+ */
+export async function enhancePrompt(
+    prompt: string,
+    attempt: number,
+    originalPrompt?: string
+): Promise<EnhancePromptResponse> {
+    return apiFetch<EnhancePromptResponse>("/api/enhance-prompt", {
+        method: "POST",
+        body: JSON.stringify({ prompt, attempt, original_prompt: originalPrompt }),
+    });
 }

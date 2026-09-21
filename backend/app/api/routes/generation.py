@@ -4,6 +4,7 @@ from pydantic import BaseModel, Field, field_validator
 from typing import Optional
 import json
 import logging
+import re
 import secrets
 import random
 from pathlib import Path
@@ -20,37 +21,31 @@ SESSION_COOKIE_NAME = "session_id"
 # backend/app/api/routes/generation.py -> backend/app/api/routes -> backend/app/api -> backend/app -> backend -> project_root
 EXAMPLES_ROOT = Path(__file__).parent.parent.parent.parent / "examples"
 
-# Mapping of vocal_language codes to human-readable names, used to hint
-# the ACE-Step LM about the desired lyrics language in sample_mode.
-_VOCAL_LANGUAGE_NAMES: dict[str, str] = {
-    "bn": "Bengali",
-    "zh": "Chinese",
-    "en": "English",
-    "fr": "French",
-    "de": "German",
-    "he": "Hebrew",
-    "hu": "Hungarian",
-    "ja": "Japanese",
-    "ko": "Korean",
-    "ms": "Malay",
-    "pl": "Polish",
-    "pt": "Portuguese",
-    "es": "Spanish",
-}
-
 # ── Pydantic models ──────────────────────────────────────────────
 
 
 class GenerationRequest(BaseModel):
     prompt: str = Field(..., min_length=1, max_length=1000)
+    # What the song is *about*. Kept out of `prompt` because an ACE-Step caption is a
+    # style description (instrumentation, timbre, mix, mood) — subject matter placed
+    # there has no channel to the vocals. See docs/archive/SPEC.md FR-20.
+    topic: str = Field("", max_length=1000)
     lyrics: str = Field("", max_length=5000)
     duration: Optional[float] = Field(None, ge=10, le=300)
     genre: Optional[str] = None
     vocal_language: str = Field("en")
     audio_format: str = Field("mp3")
     thinking: bool = Field(True)
-    use_format: bool = Field(True)
     instrumental: bool = Field(False)
+    # Off by default: upstream replaces the DiT caption with the LM's own CoT caption
+    # when this is set, discarding what the visitor asked for. Exposed as a field so the
+    # LM-expansion behaviour stays A/B-testable without a redeploy. See docs/archive/SPEC.md §8.1.
+    use_cot_caption: bool = Field(False)
+    # Off by default: upstream never forwards `vocal_language` into the LM's CoT phase,
+    # so leaving this on lets the LM pick its own language for the audio semantic codes
+    # while the DiT is conditioned on the user's choice. See docs/archive/SPEC.md FR-22.
+    use_cot_language: bool = Field(False)
+    lm_temperature: float = Field(0.7, ge=0.0, le=2.0)
     bpm: Optional[int] = Field(None, ge=30, le=300)
     key_scale: Optional[str] = None
     time_signature: Optional[str] = None
@@ -106,12 +101,69 @@ class ExampleResponse(BaseModel):
     instrumental: bool = False
 
 
+class GenerateLyricsRequest(BaseModel):
+    prompt: str = Field(..., min_length=1, max_length=1000)
+    previous_lyrics: Optional[str] = Field(None, max_length=5000)
+
+    @field_validator("prompt")
+    @classmethod
+    def validate_prompt_not_empty(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("Prompt cannot be empty or whitespace-only")
+        return v.strip()
+
+
+class GenerateLyricsResponse(BaseModel):
+    lyrics: str
+
+
+class EnhancePromptRequest(BaseModel):
+    prompt: str = Field(..., min_length=1, max_length=1000)
+    # 1-based; the wizard allows three enhancements per song, so the server refuses a
+    # fourth rather than trusting the client to stop.
+    attempt: int = Field(1, ge=1, le=3)
+    # What the visitor typed before any enhancement, so later attempts can vary it
+    # instead of expanding the previous enhancement.
+    original_prompt: Optional[str] = Field(None, max_length=1000)
+
+    @field_validator("prompt")
+    @classmethod
+    def validate_prompt_not_empty(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("Prompt cannot be empty or whitespace-only")
+        return v.strip()
+
+
+class EnhancePromptResponse(BaseModel):
+    prompt: str
+
+
+class FormatLyricsRequest(BaseModel):
+    lyrics: str = Field(..., min_length=1, max_length=5000)
+
+    @field_validator("lyrics")
+    @classmethod
+    def validate_lyrics_not_empty(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("Lyrics cannot be empty or whitespace-only")
+        return v.strip()
+
+
+class FormatLyricsResponse(BaseModel):
+    lyrics: str
+
+
 # ── Helpers ──────────────────────────────────────────────────────
 
 
 def _get_client(request: Request) -> ACEStepClient:
     """Retrieve the ACE-Step client from app state."""
     return request.app.state.acestep_client
+
+
+def _get_groq_service(request: Request):
+    """Retrieve the Groq service from app state if configured."""
+    return getattr(request.app.state, "groq_service", None)
 
 
 def get_session_id(request: Request, response: Response) -> str:
@@ -129,15 +181,75 @@ def get_session_id(request: Request, response: Response) -> str:
     return session_id
 
 
-def _normalize_language(value: Optional[str]) -> str:
-    """Map an example's language field onto a code the form's selector offers."""
-    if not value or value not in _VOCAL_LANGUAGE_NAMES:
-        return "en"
-    return value
+# Words that make upstream's `parse_description_hints` classify a sample query as
+# instrumental (see acestep/api/server_utils.py). A style description that merely
+# mentions an instrumental passage would otherwise suppress the vocals entirely, so
+# these are neutralised in `sample_query` when the visitor has not asked for
+# instrumental. The explicit checkbox stays the only way to get no vocals.
+_INSTRUMENTAL_HINT_PATTERNS: tuple[re.Pattern[str], ...] = (
+    re.compile(r"\binstrumental\b", re.IGNORECASE),
+    re.compile(r"\bpure music\b", re.IGNORECASE),
+    re.compile(r"\bpure instrument\b", re.IGNORECASE),
+    re.compile(r"\s+solo\s*$", re.IGNORECASE),
+)
+
+
+def _strip_instrumental_hints(query: str) -> str:
+    """Remove wording that would make upstream suppress vocals for a sung request."""
+    for pattern in _INSTRUMENTAL_HINT_PATTERNS:
+        query = pattern.sub(" ", query)
+    return re.sub(r"\s{2,}", " ", query).strip()
+
+
+# Below this many words a caption reads as a bare label rather than a description --
+# "country" is one, "Cinematic. An epic orchestral soundtrack" is five. At or above it
+# the visitor has composed something ("warm acoustic guitar, gentle male vocal") that we
+# have no business paraphrasing, so the threshold is deliberately low: a thin caption
+# costs quality, but rewriting a considered one is the very failure Tier 1 fixed.
+# Counted in words rather than characters so one long genre name is not mistaken for a
+# considered description.
+_TERSE_CAPTION_WORD_COUNT = 6
+
+
+async def _enrich_caption(client: ACEStepClient, caption: str) -> str:
+    """Expand a bare caption into the style description the DiT conditions well on.
+
+    Only terse captions are sent. This is the controlled half of what use_cot_caption
+    used to do for free: the LM still writes the expansion, but it happens here, on a
+    caption we chose to send, and its output lands only in the caption.
+    """
+    if len(caption.split()) >= _TERSE_CAPTION_WORD_COUNT:
+        return caption
+
+    try:
+        result = await client.format_input({"prompt": caption, "lyrics": ""})
+        # Read inside the try: the client hands back whatever upstream put in `data`,
+        # which is not guaranteed to be an object, and reading it must not be the
+        # thing that fails the request.
+        enriched = result.get("caption") if isinstance(result, dict) else None
+    except Exception:
+        # An improvement, not a dependency: this is a second upstream call on the way
+        # to the one the visitor asked for, so a failure costs them a thinner caption
+        # rather than their song. Broad on purpose — anything the client did not
+        # convert lands here too, and none of it is worth failing a generation over.
+        logger.warning(
+            "Caption enrichment failed; generating with the original caption"
+        )
+        return caption
+
+    return (
+        enriched.strip() if isinstance(enriched, str) and enriched.strip() else caption
+    )
 
 
 def _build_release_task_payload(gen_request: GenerationRequest) -> dict:
-    """Transform a GenerationRequest into the ACE-Step /release_task payload."""
+    """Transform a GenerationRequest into the ACE-Step /release_task payload.
+
+    Two channels, deliberately kept apart: `prompt` carries musical style and
+    `sample_query` carries subject matter. The LM flags below are derived rather
+    than forwarded, so the 5Hz LM rewrites the visitor's text at most once and
+    never rewrites text they typed by hand. See docs/archive/SPEC.md §8.1.
+    """
     prompt = gen_request.prompt
     if gen_request.genre:
         prompt = f"{gen_request.genre}. {prompt}"
@@ -149,13 +261,29 @@ def _build_release_task_payload(gen_request: GenerationRequest) -> dict:
     else:
         lyrics = ""
 
+    # Auto-lyrics: no lyrics given and vocals wanted. Upstream's create_sample writes
+    # both the caption and the lyrics from this query.
+    sample_mode = not gen_request.instrumental and not gen_request.lyrics
+
     payload: dict = {
         "prompt": prompt,
         "lyrics": lyrics,
         "thinking": gen_request.thinking,
         "vocal_language": gen_request.vocal_language,
         "audio_format": gen_request.audio_format,
-        "use_format": gen_request.use_format,
+        # use_format runs upstream's format_sample, which regenerates the caption *and*
+        # the lyrics in one pass — the caption enrichment cannot be had without the
+        # lyric rewrite. None of the three flows can accept that rewrite: after
+        # sample_mode it paraphrases LM output a second time, with user lyrics it
+        # destroys them (docs/archive/SPEC.md FR-21), and on an instrumental request it can return
+        # invented lyrics in place of "[Instrumental]" and put vocals on a track that
+        # asked for none. Sent explicitly rather than left to the upstream default.
+        # Caption enrichment under our own control is docs/archive/SPEC.md §8.1 "Two-stage caption",
+        # which sends only the caption, with empty lyrics, and keeps only the caption.
+        "use_format": False,
+        "use_cot_caption": gen_request.use_cot_caption,
+        "use_cot_language": gen_request.use_cot_language,
+        "lm_temperature": gen_request.lm_temperature,
         "inference_steps": gen_request.inference_steps,
         "batch_size": gen_request.batch_size,
     }
@@ -163,14 +291,11 @@ def _build_release_task_payload(gen_request: GenerationRequest) -> dict:
     if gen_request.duration is not None:
         payload["audio_duration"] = gen_request.duration
 
-    # When no lyrics are provided and it's not instrumental, delegate lyrics
-    # generation to ACE-Step's built-in 5Hz LM via sample_mode.
-    # We include the vocal language in the query because the Modal server
-    # treats "en" as "no preference" and may ignore the vocal_language field.
-    if not gen_request.instrumental and not gen_request.lyrics:
+    if sample_mode:
         payload["sample_mode"] = True
-        lang_name = _VOCAL_LANGUAGE_NAMES.get(gen_request.vocal_language, "English")
-        payload["sample_query"] = f"{prompt} (lyrics in {lang_name})"
+        # Prefer the dedicated topic field. Falling back to the style prompt keeps
+        # older clients working, at the cost of the conflation FR-20 exists to fix.
+        payload["sample_query"] = _strip_instrumental_hints(gen_request.topic or prompt)
 
     if gen_request.bpm is not None:
         payload["bpm"] = gen_request.bpm
@@ -218,8 +343,12 @@ async def submit_generation(
     """Submit a music generation task to the ACE-Step API."""
     get_session_id(request, response)  # ensure session cookie is set
 
-    payload = _build_release_task_payload(gen_request)
     client = _get_client(request)
+    payload = _build_release_task_payload(gen_request)
+    # After the payload is built, so `sample_query` keeps the visitor's own words:
+    # enrichment produces a style description, which is the wrong thing to hand the
+    # lyric writer as a subject.
+    payload["prompt"] = await _enrich_caption(client, payload["prompt"])
 
     try:
         result = await client.submit_task(payload)
@@ -381,7 +510,7 @@ async def warmup(request: Request, response: Response):
     Modal wake dominates the wait for a first song and cannot overlap with
     anything, because nothing contacts the GPU until a Task is submitted. The
     frontend calls this on the visitor's first genuine interaction so the wake
-    runs while they read the page and fill the form. See SPEC.md FR-16.
+    runs while they read the page and fill the form. See docs/archive/SPEC.md FR-16.
     """
     warm_state = request.app.state.warm_state
 
@@ -481,39 +610,54 @@ async def cancel_job(task_id: str, request: Request, response: Response):
     return Response(status_code=204)
 
 
+# Parsed once per examples directory. The curated set ships with the image and
+# cannot change while the process runs, so re-reading all ~200 files on every
+# request only burned I/O. Keyed by directory so tests that point EXAMPLES_ROOT at
+# a tmp_path still see their own fixtures.
+_QUALIFYING_EXAMPLES_CACHE: dict[str, list[dict]] = {}
+
+
+def _load_qualifying_examples(text2music_dir: Path) -> list[dict]:
+    """Return the curated English examples that carry lyrics, reading each file once."""
+    cache_key = str(text2music_dir)
+    cached = _QUALIFYING_EXAMPLES_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
+
+    qualifying: list[dict] = []
+    for f in sorted(text2music_dir.glob("*.json")):
+        with open(f, "r", encoding="utf-8") as file:
+            data = json.load(file)
+        if (
+            data.get("language") == "en"
+            and data.get("lyrics")
+            and str(data.get("lyrics")).strip()
+        ):
+            qualifying.append(data)
+
+    _QUALIFYING_EXAMPLES_CACHE[cache_key] = qualifying
+    return qualifying
+
+
 @router.get("/examples/random", response_model=ExampleResponse)
 @limiter.limit("10/minute")
 async def get_random_example(request: Request, response: Response):
-    """Pick a random example from the curated collection and map its fields."""
+    """Pick a random example from curated English examples with lyrics."""
     try:
-        # Draw from both collections so every example is reachable, regardless
-        # of which one it came from — the UI no longer has separate modes.
-        all_files = [
-            (dirname, f)
-            for dirname in ("simple_mode", "text2music")
-            if (EXAMPLES_ROOT / dirname).exists()
-            for f in (EXAMPLES_ROOT / dirname).glob("*.json")
-        ]
-
-        if not all_files:
+        text2music_dir = EXAMPLES_ROOT / "text2music"
+        if not text2music_dir.exists():
             raise HTTPException(status_code=404, detail="No example files found")
 
-        dirname, random_file = random.choice(all_files)
-        with open(random_file, "r") as f:
-            data = json.load(f)
+        qualifying_examples = _load_qualifying_examples(text2music_dir)
+        if not qualifying_examples:
+            raise HTTPException(status_code=404, detail="No example files found")
 
-        if dirname == "simple_mode":
-            return ExampleResponse(
-                prompt=data.get("description", ""),
-                lyrics="",
-                vocal_language=_normalize_language(data.get("vocal_language")),
-                instrumental=bool(data.get("instrumental")),
-            )
-
+        data = random.choice(qualifying_examples)
         return ExampleResponse(
             prompt=data.get("caption", ""),
             lyrics=data.get("lyrics", ""),
-            vocal_language=_normalize_language(data.get("language")),
+            vocal_language="en",
+            instrumental=False,
         )
 
     except HTTPException:
@@ -521,4 +665,94 @@ async def get_random_example(request: Request, response: Response):
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to fetch example: {str(e)}"
+        )
+
+
+@router.post("/generate-lyrics", response_model=GenerateLyricsResponse)
+@limiter.limit("10/minute")
+async def generate_lyrics(
+    request: Request,
+    response: Response,
+    body: GenerateLyricsRequest,
+):
+    """Generate structured song lyrics from a musical prompt using Groq.
+
+    With ``previous_lyrics`` set, writes a contrasting regeneration at a higher
+    temperature instead of a first take.
+    """
+    get_session_id(request, response)
+    groq_service = _get_groq_service(request)
+    if not groq_service or not groq_service.is_configured:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="AI lyric service is not configured",
+        )
+
+    try:
+        lyrics = await groq_service.generate_lyrics(body.prompt, body.previous_lyrics)
+        return GenerateLyricsResponse(lyrics=lyrics)
+    except Exception:
+        # The exception text is logged, not returned: Groq's APIStatusError carries
+        # the upstream response body, which can name the org, key prefix and request
+        # id, and this endpoint is reachable by any visitor.
+        logger.exception("Failed to generate lyrics via Groq")
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Lyric generation failed",
+        )
+
+
+@router.post("/format-lyrics", response_model=FormatLyricsResponse)
+@limiter.limit("15/minute")
+async def format_lyrics(
+    request: Request,
+    response: Response,
+    body: FormatLyricsRequest,
+):
+    """Format custom or edited lyrics into structured sections without altering words."""
+    get_session_id(request, response)
+    groq_service = _get_groq_service(request)
+    if not groq_service or not groq_service.is_configured:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="AI lyric service is not configured",
+        )
+
+    try:
+        formatted = await groq_service.format_lyrics(body.lyrics)
+        return FormatLyricsResponse(lyrics=formatted)
+    except Exception:
+        logger.exception("Failed to format lyrics via Groq")
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Lyric formatting failed",
+        )
+
+
+@router.post("/enhance-prompt", response_model=EnhancePromptResponse)
+@limiter.limit("10/minute")
+async def enhance_prompt(
+    request: Request,
+    response: Response,
+    body: EnhancePromptRequest,
+):
+    """Expand a song prompt with musical styling detail using Groq."""
+    get_session_id(request, response)
+    groq_service = _get_groq_service(request)
+    if not groq_service or not groq_service.is_configured:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="AI lyric service is not configured",
+        )
+
+    try:
+        enhanced = await groq_service.enhance_prompt(
+            body.prompt, body.attempt, body.original_prompt
+        )
+        return EnhancePromptResponse(prompt=enhanced)
+    except Exception:
+        logger.exception("Failed to enhance prompt via Groq")
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Prompt enhancement failed",
         )

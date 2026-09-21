@@ -14,12 +14,26 @@ inference service. The unit the user waits on.
 _Avoid_: Job, generation, render
 
 **Prompt**:
-The user's free-text description of the music they want.
-_Avoid_: Caption, description, query
+The user's single free-text description of the song — including musical style, mood,
+instrumentation, and subject matter. Groq decomposes this into structured lyrics and
+musical styling for ACE-Step.
+_Avoid_: Caption, description, query, style input
+
+**Enhancement**:
+A Groq rewrite of the Prompt that adds tempo, instrumentation, and mood detail while
+keeping its subject. Limited to three per song; later ones are variations of the
+visitor's original wording, never an expansion of the previous enhancement.
+_Avoid_: Prompt expansion, rewrite, boost
+
+**Topic**:
+Retired as a standalone user input. The song's subject matter is now written directly into
+the Prompt, where the Groq songwriter extracts it to compose the lyrics.
+_Avoid_: Subject, theme, sample query, about
 
 **Example**:
 A curated, pre-written prompt shipped with the application that a user can load into
-the form with one click.
+the wizard with one click. It carries premade lyrics, which stay available as long as
+the prompt matches the example's — editing away from it and back restores them.
 _Avoid_: Sample, random sample, demo
 
 ### Latency

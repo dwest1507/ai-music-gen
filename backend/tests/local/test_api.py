@@ -2,6 +2,7 @@ import json
 import pytest
 from unittest.mock import MagicMock, patch
 import httpx
+from app.services.acestep_client import ACEStepError
 
 
 @pytest.mark.asyncio
@@ -71,7 +72,7 @@ async def test_submit_generation(async_client, mock_acestep_client):
     assert "Cinematic" in call_args["prompt"]
     assert "audio_duration" not in call_args  # duration omitted when not provided
     assert call_args["thinking"] is True
-    assert call_args["use_format"] is True
+    assert call_args["use_format"] is False
     assert call_args["infer_method"] == "ode"
     assert "session_id" in response.cookies
 
@@ -111,14 +112,19 @@ async def test_submit_generation_no_lyrics_enables_sample_mode(
     call_args = mock_acestep_client.submit_task.call_args[0][0]
     assert call_args["lyrics"] == ""
     assert call_args["sample_mode"] is True
-    assert call_args["sample_query"] == "A jazz melody (lyrics in English)"
+    assert call_args["sample_query"] == "A jazz melody"
 
 
 @pytest.mark.asyncio
-async def test_submit_generation_sample_mode_includes_language_hint(
+async def test_submit_generation_pins_language_without_polluting_the_query(
     async_client, mock_acestep_client
 ):
-    """When sample_mode is enabled, sample_query includes the vocal language hint."""
+    """The chosen language is pinned by flags, not by wording appended to the query.
+
+    Upstream lets the LM choose its own language during CoT unless use_cot_language is
+    off, and the codes it then generates are what actually gets sung. Turning the flag
+    off is the fix; the old "(lyrics in Spanish)" suffix only leaked into the caption.
+    """
     mock_acestep_client.submit_task.return_value = {"task_id": "lang-hint-task"}
 
     async_client.cookies.set("session_id", "test-lang-hint-session")
@@ -128,7 +134,9 @@ async def test_submit_generation_sample_mode_includes_language_hint(
 
     call_args = mock_acestep_client.submit_task.call_args[0][0]
     assert call_args["sample_mode"] is True
-    assert call_args["sample_query"] == "A trap rap song (lyrics in Spanish)"
+    assert call_args["vocal_language"] == "es"
+    assert call_args["use_cot_language"] is False
+    assert call_args["sample_query"] == "A trap rap song"
 
 
 @pytest.mark.asyncio
@@ -144,7 +152,7 @@ async def test_submit_generation_sample_query_includes_genre(
 
     call_args = mock_acestep_client.submit_task.call_args[0][0]
     assert call_args["prompt"] == "Metal. a song about rain"
-    assert call_args["sample_query"] == "Metal. a song about rain (lyrics in English)"
+    assert call_args["sample_query"] == "Metal. a song about rain"
 
 
 @pytest.mark.asyncio
@@ -354,30 +362,48 @@ async def test_get_random_example(async_client):
     data = response.json()
     assert data["prompt"]
     assert set(data) == {"prompt", "lyrics", "vocal_language", "instrumental"}
+    assert data["vocal_language"] == "en"
+    assert data["lyrics"].strip() != ""
+    assert data["instrumental"] is False
 
 
 @pytest.mark.asyncio
-async def test_get_random_example_pools_both_collections(async_client, tmp_path):
-    """One pool spans both example directories, so every example is reachable."""
+async def test_get_random_example_filters_strictly_to_english_with_lyrics(
+    async_client, tmp_path
+):
+    """Random examples are filtered strictly to English examples from text2music with lyrics."""
     (tmp_path / "simple_mode").mkdir()
-    (tmp_path / "simple_mode" / "s.json").write_text(json.dumps({"description": "s"}))
+    (tmp_path / "simple_mode" / "s.json").write_text(
+        json.dumps({"description": "simple mode track", "instrumental": True})
+    )
     (tmp_path / "text2music").mkdir()
-    (tmp_path / "text2music" / "t.json").write_text(json.dumps({"caption": "t"}))
+    (tmp_path / "text2music" / "non_en.json").write_text(
+        json.dumps(
+            {"caption": "japanese track", "lyrics": "some lyrics", "language": "ja"}
+        )
+    )
+    (tmp_path / "text2music" / "no_lyrics.json").write_text(
+        json.dumps({"caption": "empty lyrics track", "lyrics": "", "language": "en"})
+    )
+    (tmp_path / "text2music" / "valid.json").write_text(
+        json.dumps(
+            {
+                "caption": "english song with lyrics",
+                "lyrics": "[Verse 1]\nSunlight through the window",
+                "language": "en",
+            }
+        )
+    )
 
-    pools = []
-
-    def capture_choice(seq):
-        pools.append(list(seq))
-        return seq[0]
-
-    with (
-        patch("app.api.routes.generation.EXAMPLES_ROOT", new=tmp_path),
-        patch("app.api.routes.generation.random.choice", side_effect=capture_choice),
-    ):
+    with patch("app.api.routes.generation.EXAMPLES_ROOT", new=tmp_path):
         response = await async_client.get("/api/examples/random")
 
     assert response.status_code == 200
-    assert {dirname for dirname, _ in pools[0]} == {"simple_mode", "text2music"}
+    data = response.json()
+    assert data["prompt"] == "english song with lyrics"
+    assert data["lyrics"] == "[Verse 1]\nSunlight through the window"
+    assert data["vocal_language"] == "en"
+    assert data["instrumental"] is False
 
 
 @pytest.mark.asyncio
@@ -392,42 +418,15 @@ async def test_get_random_example_rate_limit_returns_429(async_client):
 
 
 @pytest.mark.asyncio
-async def test_get_random_example_maps_simple_mode_fields(async_client, tmp_path):
-    """A simple_mode example maps description/instrumental and drops lyrics."""
-    (tmp_path / "simple_mode").mkdir()
-    (tmp_path / "simple_mode" / "one.json").write_text(
-        json.dumps(
-            {
-                "description": "a mellow guitar instrumental",
-                "instrumental": True,
-                "vocal_language": "unknown",
-            }
-        )
-    )
-
-    with patch("app.api.routes.generation.EXAMPLES_ROOT", new=tmp_path):
-        response = await async_client.get("/api/examples/random")
-
-    assert response.status_code == 200
-    assert response.json() == {
-        "prompt": "a mellow guitar instrumental",
-        "lyrics": "",
-        # "unknown" is not a language the form offers, so it falls back to "en"
-        "vocal_language": "en",
-        "instrumental": True,
-    }
-
-
-@pytest.mark.asyncio
 async def test_get_random_example_maps_text2music_fields(async_client, tmp_path):
-    """A text2music example maps caption/lyrics/language and is never instrumental."""
+    """A text2music example maps caption and lyrics, defaults language to en, and is never instrumental."""
     (tmp_path / "text2music").mkdir()
     (tmp_path / "text2music" / "one.json").write_text(
         json.dumps(
             {
-                "caption": "an upbeat city pop track",
+                "caption": "an upbeat indie rock track",
                 "lyrics": "[Verse 1]\nneon rain",
-                "language": "ja",
+                "language": "en",
                 "bpm": 120,
                 "duration": 160,
             }
@@ -439,9 +438,9 @@ async def test_get_random_example_maps_text2music_fields(async_client, tmp_path)
 
     assert response.status_code == 200
     assert response.json() == {
-        "prompt": "an upbeat city pop track",
+        "prompt": "an upbeat indie rock track",
         "lyrics": "[Verse 1]\nneon rain",
-        "vocal_language": "ja",
+        "vocal_language": "en",
         "instrumental": False,
     }
 
@@ -449,8 +448,8 @@ async def test_get_random_example_maps_text2music_fields(async_client, tmp_path)
 @pytest.mark.asyncio
 async def test_get_random_example_unreadable_file_returns_500(async_client, tmp_path):
     """A malformed example file surfaces as a 500, not an unhandled error."""
-    (tmp_path / "simple_mode").mkdir()
-    (tmp_path / "simple_mode" / "broken.json").write_text("{ not json")
+    (tmp_path / "text2music").mkdir()
+    (tmp_path / "text2music" / "broken.json").write_text("{ not json")
 
     with patch("app.api.routes.generation.EXAMPLES_ROOT", new=tmp_path):
         response = await async_client.get("/api/examples/random")
@@ -838,3 +837,754 @@ async def test_get_random_example_no_files(async_client, tmp_path):
     with patch("app.api.routes.generation.EXAMPLES_ROOT", new=tmp_path):
         response = await async_client.get("/api/examples/random")
     assert response.status_code == 404
+
+
+# ── Single-pass conditioning (SPEC.md §8.1, FR-20/21/22) ──────────
+
+
+@pytest.mark.asyncio
+async def test_user_lyrics_are_never_sent_for_lm_rewrite(
+    async_client, mock_acestep_client
+):
+    """Lyrics the user typed reach the model verbatim.
+
+    use_format runs upstream's format_sample, which regenerates lyrics free-form and
+    returns its own text in place of the input. That is what made hand-written lyrics
+    come back only partially used.
+    """
+    mock_acestep_client.submit_task.return_value = {"task_id": "verbatim-task"}
+
+    lyrics = "[Verse]\nHe taught me how to drive\n\n[Chorus]\nAnd I never said thanks"
+    response = await async_client.post(
+        "/api/generate", json={"prompt": "A country ballad", "lyrics": lyrics}
+    )
+    assert response.status_code == 202
+
+    call_args = mock_acestep_client.submit_task.call_args[0][0]
+    assert call_args["lyrics"] == lyrics
+    assert call_args["use_format"] is False
+    assert "sample_mode" not in call_args
+
+
+@pytest.mark.asyncio
+async def test_instrumental_request_is_not_sent_for_lm_rewrite(
+    async_client, mock_acestep_client
+):
+    """An instrumental request keeps its [Instrumental] marker.
+
+    format_sample regenerates the lyrics section whatever it was handed, so running it
+    here can return invented lyrics and put vocals on a track that asked for none.
+    """
+    mock_acestep_client.submit_task.return_value = {"task_id": "instrumental-task"}
+
+    response = await async_client.post(
+        "/api/generate", json={"prompt": "A solo piano piece", "instrumental": True}
+    )
+    assert response.status_code == 202
+
+    call_args = mock_acestep_client.submit_task.call_args[0][0]
+    assert call_args["lyrics"] == "[Instrumental]"
+    assert call_args["use_format"] is False
+
+
+@pytest.mark.asyncio
+async def test_submit_generation_instrumental_bypasses_sample_mode_and_enforces_english(
+    async_client, mock_acestep_client
+):
+    """Submitting an instrumental job sends lyrics='[Instrumental]', sample_mode=False, vocal_language='en'."""
+    mock_acestep_client.submit_task.return_value = {"task_id": "instr-123"}
+    response = await async_client.post(
+        "/api/generate",
+        json={"prompt": "Epic orchestral soundtrack", "instrumental": True},
+    )
+    assert response.status_code == 202
+    call_args = mock_acestep_client.submit_task.call_args[0][0]
+    assert call_args["lyrics"] == "[Instrumental]"
+    assert "sample_mode" not in call_args
+    assert call_args["vocal_language"] == "en"
+    assert call_args["use_format"] is False
+
+
+@pytest.mark.asyncio
+async def test_auto_lyrics_are_not_paraphrased_twice(async_client, mock_acestep_client):
+    """sample_mode already yields a clean caption and lyrics; don't format them again."""
+    mock_acestep_client.submit_task.return_value = {"task_id": "single-pass-task"}
+
+    response = await async_client.post(
+        "/api/generate", json={"prompt": "A jazz melody"}
+    )
+    assert response.status_code == 202
+
+    call_args = mock_acestep_client.submit_task.call_args[0][0]
+    assert call_args["sample_mode"] is True
+    assert call_args["use_format"] is False
+
+
+@pytest.mark.asyncio
+async def test_topic_drives_lyrics_and_prompt_drives_style(
+    async_client, mock_acestep_client
+):
+    """Subject matter goes to the lyric query; the caption stays a style description.
+
+    An ACE-Step caption describes instrumentation and mood, so a narrative request
+    placed there has no channel to the vocals (SPEC.md FR-20).
+    """
+    mock_acestep_client.submit_task.return_value = {"task_id": "topic-task"}
+
+    response = await async_client.post(
+        "/api/generate",
+        json={
+            "prompt": "warm acoustic guitar, gentle male vocal",
+            "topic": "a father and son's relationship",
+            "genre": "Country",
+        },
+    )
+    assert response.status_code == 202
+
+    call_args = mock_acestep_client.submit_task.call_args[0][0]
+    assert call_args["prompt"] == "Country. warm acoustic guitar, gentle male vocal"
+    assert call_args["sample_query"] == "a father and son's relationship"
+
+
+@pytest.mark.asyncio
+async def test_sample_query_falls_back_to_the_prompt_without_a_topic(
+    async_client, mock_acestep_client
+):
+    """Clients that predate the topic field keep working."""
+    mock_acestep_client.submit_task.return_value = {"task_id": "fallback-task"}
+
+    response = await async_client.post(
+        "/api/generate", json={"prompt": "a song about rain"}
+    )
+    assert response.status_code == 202
+
+    call_args = mock_acestep_client.submit_task.call_args[0][0]
+    assert call_args["sample_query"] == "a song about rain"
+
+
+@pytest.mark.asyncio
+async def test_the_lm_does_not_replace_the_caption_or_choose_the_language(
+    async_client, mock_acestep_client
+):
+    """Both CoT overrides are off, so the DiT is conditioned on what the user chose."""
+    mock_acestep_client.submit_task.return_value = {"task_id": "cot-task"}
+
+    response = await async_client.post(
+        "/api/generate", json={"prompt": "A synthwave track", "vocal_language": "ja"}
+    )
+    assert response.status_code == 202
+
+    call_args = mock_acestep_client.submit_task.call_args[0][0]
+    assert call_args["use_cot_caption"] is False
+    assert call_args["use_cot_language"] is False
+    assert call_args["vocal_language"] == "ja"
+
+
+@pytest.mark.asyncio
+async def test_cot_caption_stays_switchable_for_ab_testing(
+    async_client, mock_acestep_client
+):
+    """LM caption expansion helps a terse prompt, so the lever survives the default."""
+    mock_acestep_client.submit_task.return_value = {"task_id": "ab-task"}
+
+    response = await async_client.post(
+        "/api/generate", json={"prompt": "country", "use_cot_caption": True}
+    )
+    assert response.status_code == 202
+
+    call_args = mock_acestep_client.submit_task.call_args[0][0]
+    assert call_args["use_cot_caption"] is True
+
+
+@pytest.mark.asyncio
+async def test_lm_temperature_defaults_below_upstream(
+    async_client, mock_acestep_client
+):
+    """Upstream defaults to 0.85; a cooler LM follows the prompt more closely."""
+    mock_acestep_client.submit_task.return_value = {"task_id": "temp-task"}
+
+    response = await async_client.post("/api/generate", json={"prompt": "A folk song"})
+    assert response.status_code == 202
+
+    assert mock_acestep_client.submit_task.call_args[0][0]["lm_temperature"] == 0.7
+
+
+@pytest.mark.asyncio
+async def test_instrumental_wording_does_not_silence_a_sung_request(
+    async_client, mock_acestep_client
+):
+    """A style that mentions an instrumental passage must not suppress the vocals.
+
+    Upstream's parse_description_hints scans sample_query for "instrumental", "pure
+    music", "pure instrument", or a trailing "solo", and flips the whole request to
+    instrumental. Only the explicit toggle should be able to do that.
+    """
+    mock_acestep_client.submit_task.return_value = {"task_id": "hint-task"}
+
+    response = await async_client.post(
+        "/api/generate",
+        json={
+            "prompt": "A ballad",
+            "topic": "heartbreak, with an instrumental bridge and a closing guitar solo",
+        },
+    )
+    assert response.status_code == 202
+
+    query = mock_acestep_client.submit_task.call_args[0][0]["sample_query"]
+    assert "instrumental" not in query.lower()
+    assert not query.lower().endswith("solo")
+    assert "heartbreak" in query
+    assert "  " not in query
+
+
+@pytest.mark.asyncio
+async def test_explicit_duration_is_forwarded(async_client, mock_acestep_client):
+    """Without a duration the LM picks one, which can be shorter than the lyrics need."""
+    mock_acestep_client.submit_task.return_value = {"task_id": "duration-task"}
+
+    response = await async_client.post(
+        "/api/generate", json={"prompt": "A long ballad", "duration": 180}
+    )
+    assert response.status_code == 202
+
+    assert mock_acestep_client.submit_task.call_args[0][0]["audio_duration"] == 180
+
+
+# ── Two-stage caption (SPEC.md §8.2) ──────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_a_terse_style_prompt_is_enriched_before_generation(
+    async_client, mock_acestep_client
+):
+    """A bare style prompt is expanded into a real caption before it conditions the DiT.
+
+    "country" carries almost no production detail, and we no longer let the LM's CoT
+    fill that gap because it replaced the caption wholesale. Enriching it up front and
+    keeping the result is the controlled version of the same idea.
+    """
+    mock_acestep_client.format_input.return_value = {
+        "caption": "A warm mid-tempo country ballad with acoustic guitar and pedal steel.",
+        "lyrics": "[Instrumental]",
+    }
+    mock_acestep_client.submit_task.return_value = {"task_id": "enriched-task"}
+
+    response = await async_client.post("/api/generate", json={"prompt": "country"})
+    assert response.status_code == 202
+
+    call_args = mock_acestep_client.submit_task.call_args[0][0]
+    assert call_args["prompt"] == (
+        "A warm mid-tempo country ballad with acoustic guitar and pedal steel."
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_detailed_style_prompt_is_left_alone(async_client, mock_acestep_client):
+    """A caption that already reads like one is not rewritten, and costs no round-trip.
+
+    Enrichment exists to fill in what a bare genre word leaves out. Running it on a
+    prompt the visitor wrote carefully would put us back where Tier 1 started —
+    paraphrasing their text — and would add an LM call to every generation.
+    """
+    mock_acestep_client.submit_task.return_value = {"task_id": "detailed-task"}
+
+    detailed = (
+        "A brooding synthwave instrumental with analog pads, gated reverb drums, "
+        "and a driving arpeggiated bassline under a slow, wide lead."
+    )
+    response = await async_client.post("/api/generate", json={"prompt": detailed})
+    assert response.status_code == 202
+
+    mock_acestep_client.format_input.assert_not_called()
+    assert mock_acestep_client.submit_task.call_args[0][0]["prompt"] == detailed
+
+
+@pytest.mark.asyncio
+async def test_enrichment_never_sees_the_users_lyrics(
+    async_client, mock_acestep_client
+):
+    """The pre-pass is sent empty lyrics, whatever the visitor wrote.
+
+    format_input runs the same format_sample that regenerates lyrics free-form. Sending
+    it the real lyrics would reintroduce exactly the rewrite FR-21 exists to prevent,
+    just one call earlier.
+    """
+    mock_acestep_client.format_input.return_value = {"caption": "An enriched caption."}
+    mock_acestep_client.submit_task.return_value = {"task_id": "no-lyrics-leak"}
+
+    lyrics = "[Verse]\nWords the visitor wrote themselves"
+    response = await async_client.post(
+        "/api/generate", json={"prompt": "country", "lyrics": lyrics}
+    )
+    assert response.status_code == 202
+
+    sent = mock_acestep_client.format_input.call_args[0][0]
+    assert sent["lyrics"] == ""
+    assert lyrics not in str(sent)
+    # ...and the real lyrics still reach generation untouched.
+    assert mock_acestep_client.submit_task.call_args[0][0]["lyrics"] == lyrics
+
+
+@pytest.mark.asyncio
+async def test_a_failed_enrichment_still_generates(async_client, mock_acestep_client):
+    """Enrichment is an improvement, not a dependency.
+
+    It is a second upstream call on the way to the one the visitor actually asked for,
+    so a failure there must cost them a thinner caption, not their song.
+    """
+    mock_acestep_client.format_input.side_effect = ACEStepError("LM unavailable", 502)
+    mock_acestep_client.submit_task.return_value = {"task_id": "degraded-task"}
+
+    response = await async_client.post(
+        "/api/generate", json={"prompt": "country", "genre": "Country"}
+    )
+    assert response.status_code == 202
+
+    assert (
+        mock_acestep_client.submit_task.call_args[0][0]["prompt"] == "Country. country"
+    )
+
+
+@pytest.mark.asyncio
+async def test_composed_style_wording_is_not_treated_as_a_bare_label(
+    async_client, mock_acestep_client
+):
+    """Six words naming instruments and a vocal is a description, not a label.
+
+    This is the line the threshold draws. Getting it wrong in this direction would
+    paraphrase text the visitor composed — the failure Tier 1 fixed — so the boundary
+    is asserted rather than left to the constant.
+    """
+    mock_acestep_client.submit_task.return_value = {"task_id": "boundary-task"}
+
+    response = await async_client.post(
+        "/api/generate", json={"prompt": "warm acoustic guitar, gentle male vocals"}
+    )
+    assert response.status_code == 202
+
+    mock_acestep_client.format_input.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_a_malformed_enrichment_response_still_generates(
+    async_client, mock_acestep_client
+):
+    """A response that is not a caption-bearing object degrades like a failure.
+
+    The client unwraps whatever upstream put in `data`, which is not guaranteed to be
+    an object. Reading it must not be the thing that fails the visitor's song.
+    """
+    mock_acestep_client.format_input.return_value = None
+    mock_acestep_client.submit_task.return_value = {"task_id": "malformed-task"}
+
+    response = await async_client.post("/api/generate", json={"prompt": "country"})
+    assert response.status_code == 202
+
+    assert mock_acestep_client.submit_task.call_args[0][0]["prompt"] == "country"
+
+
+@pytest.mark.asyncio
+async def test_generate_lyrics_unconfigured_returns_503(async_client):
+    """When GROQ_API_KEY is not configured, POST /api/generate-lyrics returns 503."""
+    from app.main import app
+    from app.services.groq_service import GroqService
+
+    app.state.groq_service = GroqService(api_key="")
+
+    response = await async_client.post(
+        "/api/generate-lyrics", json={"prompt": "An upbeat indie pop song"}
+    )
+    assert response.status_code == 503
+    assert response.json()["detail"] == "AI lyric service is not configured"
+
+
+@pytest.mark.asyncio
+async def test_generate_lyrics_success(async_client):
+    """When configured, POST /api/generate-lyrics returns structured stanzas."""
+    from unittest.mock import AsyncMock, MagicMock
+    from app.main import app
+    from app.services.groq_service import GroqService
+
+    mock_service = MagicMock(spec=GroqService)
+    mock_service.is_configured = True
+    mock_service.generate_lyrics = AsyncMock(
+        return_value="[Verse 1]\nNeon lights in the rain\n\n[Chorus]\nRunning away"
+    )
+    app.state.groq_service = mock_service
+
+    response = await async_client.post(
+        "/api/generate-lyrics",
+        json={"prompt": "A synthwave track about nighttime driving"},
+    )
+    assert response.status_code == 200
+    assert response.json() == {
+        "lyrics": "[Verse 1]\nNeon lights in the rain\n\n[Chorus]\nRunning away"
+    }
+    mock_service.generate_lyrics.assert_awaited_once_with(
+        "A synthwave track about nighttime driving", None
+    )
+
+
+def _groq_service_returning(text: str):
+    """A configured GroqService whose network client is mocked at the SDK boundary."""
+    from unittest.mock import AsyncMock, MagicMock
+    from app.services.groq_service import GroqService
+
+    service = GroqService(api_key="gsk_test_key", model="openai/gpt-oss-120b")
+    choice = MagicMock()
+    choice.message.content = text
+    completion = MagicMock()
+    completion.choices = [choice]
+    service.client = MagicMock()
+    service.client.chat.completions.create = AsyncMock(return_value=completion)
+    return service
+
+
+@pytest.mark.asyncio
+async def test_generate_lyrics_regeneration_is_contrastive_and_hotter(async_client):
+    """Sending previous_lyrics asks Groq for different stanzas at temperature 0.85."""
+    from app.main import app
+
+    service = _groq_service_returning("[Verse 1]\nA brand new angle")
+    app.state.groq_service = service
+    previous = "[Verse 1]\nNeon lights in the rain"
+
+    response = await async_client.post(
+        "/api/generate-lyrics",
+        json={"prompt": "A synthwave track", "previous_lyrics": previous},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"lyrics": "[Verse 1]\nA brand new angle"}
+    kwargs = service.client.chat.completions.create.call_args.kwargs
+    assert kwargs["temperature"] == 0.85
+    sent = " ".join(m["content"] for m in kwargs["messages"])
+    assert previous in sent
+    assert "A synthwave track" in sent
+
+
+@pytest.mark.asyncio
+async def test_generate_lyrics_validation_error(async_client):
+    """Empty or whitespace-only prompt returns 422."""
+    response = await async_client.post("/api/generate-lyrics", json={"prompt": "   "})
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_generate_lyrics_rate_limit_returns_429(async_client):
+    """/api/generate-lyrics allows 10 requests per minute, then 429s."""
+    from unittest.mock import AsyncMock, MagicMock
+    from app.main import app
+    from app.services.groq_service import GroqService
+
+    mock_service = MagicMock(spec=GroqService)
+    mock_service.is_configured = True
+    mock_service.generate_lyrics = AsyncMock(return_value="[Verse 1]\nSample lyrics")
+    app.state.groq_service = mock_service
+
+    for _ in range(10):
+        resp = await async_client.post(
+            "/api/generate-lyrics", json={"prompt": "A test prompt"}
+        )
+        assert resp.status_code == 200
+
+    resp = await async_client.post(
+        "/api/generate-lyrics", json={"prompt": "A test prompt"}
+    )
+    assert resp.status_code == 429
+
+
+# ── Format lyrics (Issue #87) ─────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_format_lyrics_unconfigured_returns_503(async_client):
+    """POST /api/format-lyrics returns 503 when GroqService is unconfigured."""
+    from app.main import app
+    from app.services.groq_service import GroqService
+
+    app.state.groq_service = GroqService(api_key="")
+
+    response = await async_client.post(
+        "/api/format-lyrics",
+        json={"lyrics": "some raw text to format"},
+    )
+    assert response.status_code == 503
+    assert "not configured" in response.json()["detail"].lower()
+
+
+@pytest.mark.asyncio
+async def test_format_lyrics_success(async_client):
+    """When configured, POST /api/format-lyrics returns formatted lyrics."""
+    from unittest.mock import AsyncMock, MagicMock
+    from app.main import app
+    from app.services.groq_service import GroqService
+
+    mock_service = MagicMock(spec=GroqService)
+    mock_service.is_configured = True
+    mock_service.format_lyrics = AsyncMock(
+        return_value="[Verse 1]\nNeon lights in the rain\n\n[Chorus]\nRunning away"
+    )
+    app.state.groq_service = mock_service
+
+    raw_input = "neon lights in the rain\nrunning away"
+    response = await async_client.post(
+        "/api/format-lyrics",
+        json={"lyrics": raw_input},
+    )
+    assert response.status_code == 200
+    assert response.json() == {
+        "lyrics": "[Verse 1]\nNeon lights in the rain\n\n[Chorus]\nRunning away"
+    }
+    mock_service.format_lyrics.assert_awaited_once_with(raw_input)
+
+
+@pytest.mark.asyncio
+async def test_format_lyrics_upstream_failure_returns_502(async_client):
+    """A Groq failure surfaces as 502 so the wizard can fall back to raw lyrics."""
+    from unittest.mock import AsyncMock, MagicMock
+    from app.main import app
+    from app.services.groq_service import GroqService
+
+    mock_service = MagicMock(spec=GroqService)
+    mock_service.is_configured = True
+    mock_service.format_lyrics = AsyncMock(side_effect=RuntimeError("groq timed out"))
+    app.state.groq_service = mock_service
+
+    response = await async_client.post(
+        "/api/format-lyrics", json={"lyrics": "some raw text to format"}
+    )
+    assert response.status_code == 502
+    assert "formatting failed" in response.json()["detail"].lower()
+
+
+@pytest.mark.asyncio
+async def test_format_lyrics_validation_error(async_client):
+    """Empty or whitespace-only lyrics returns 422."""
+    response = await async_client.post("/api/format-lyrics", json={"lyrics": "   "})
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_format_lyrics_rate_limit_returns_429(async_client):
+    """POST /api/format-lyrics allows 15 requests per minute, then 429s."""
+    from unittest.mock import AsyncMock, MagicMock
+    from app.main import app
+    from app.services.groq_service import GroqService
+
+    mock_service = MagicMock(spec=GroqService)
+    mock_service.is_configured = True
+    mock_service.format_lyrics = AsyncMock(return_value="[Verse]\nFormatted lyrics")
+    app.state.groq_service = mock_service
+
+    for _ in range(15):
+        resp = await async_client.post(
+            "/api/format-lyrics", json={"lyrics": "Test lyrics to format"}
+        )
+        assert resp.status_code == 200
+
+    resp = await async_client.post(
+        "/api/format-lyrics", json={"lyrics": "Test lyrics to format"}
+    )
+    assert resp.status_code == 429
+
+
+# ── Enhance prompt (Issue #84) ────────────────────────────────────
+
+
+def _install_groq_replying(*replies: str):
+    """Install a real GroqService whose network client answers with `replies` in order.
+
+    Mocking at the Groq client boundary keeps the route and the service under test,
+    so these tests assert what reaches Groq rather than which internal method ran.
+    """
+    from unittest.mock import AsyncMock, MagicMock
+    from app.main import app
+    from app.services.groq_service import GroqService
+
+    responses = []
+    for reply in replies:
+        choice = MagicMock()
+        choice.message.content = reply
+        resp = MagicMock()
+        resp.choices = [choice]
+        responses.append(resp)
+
+    client = MagicMock()
+    client.chat.completions.create = AsyncMock(side_effect=responses)
+    service = GroqService(api_key="gsk_test_key", model="openai/gpt-oss-120b")
+    service.client = client
+    app.state.groq_service = service
+    return client.chat.completions.create
+
+
+@pytest.mark.asyncio
+async def test_enhance_prompt_returns_the_enriched_prompt(async_client):
+    """POST /api/enhance-prompt swaps a bare idea for one with styling detail."""
+    groq_create = _install_groq_replying(
+        "Pop punk, 180 BPM, distorted power chords, punchy drums, anthemic mood"
+    )
+
+    response = await async_client.post(
+        "/api/enhance-prompt", json={"prompt": "Make a pop punk song about being a dad"}
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "prompt": "Pop punk, 180 BPM, distorted power chords, punchy drums, anthemic mood"
+    }
+    sent = groq_create.call_args.kwargs["messages"]
+    assert "Make a pop punk song about being a dad" in sent[-1]["content"]
+
+
+@pytest.mark.asyncio
+async def test_enhance_prompt_unconfigured_returns_503(async_client):
+    """Without GROQ_API_KEY the endpoint says so instead of failing upstream."""
+    from app.main import app
+    from app.services.groq_service import GroqService
+
+    app.state.groq_service = GroqService(api_key="")
+
+    response = await async_client.post(
+        "/api/enhance-prompt", json={"prompt": "An upbeat indie pop song"}
+    )
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "AI lyric service is not configured"
+
+
+@pytest.mark.asyncio
+async def test_enhance_prompt_rate_limit_returns_429(async_client):
+    """/api/enhance-prompt allows 10 requests per minute, then 429s."""
+    _install_groq_replying(*["Enhanced prompt"] * 10)
+
+    for _ in range(10):
+        resp = await async_client.post(
+            "/api/enhance-prompt", json={"prompt": "A test prompt"}
+        )
+        assert resp.status_code == 200
+
+    resp = await async_client.post(
+        "/api/enhance-prompt", json={"prompt": "A test prompt"}
+    )
+    assert resp.status_code == 429
+
+
+@pytest.mark.asyncio
+async def test_enhance_prompt_upstream_failure_returns_502(async_client):
+    """A Groq outage surfaces as a bad gateway the wizard can degrade on."""
+    from unittest.mock import AsyncMock, MagicMock
+    from app.main import app
+    from app.services.groq_service import GroqService
+
+    service = GroqService(api_key="gsk_test_key")
+    service.client = MagicMock()
+    service.client.chat.completions.create = AsyncMock(side_effect=RuntimeError("boom"))
+    app.state.groq_service = service
+
+    response = await async_client.post(
+        "/api/enhance-prompt", json={"prompt": "A test prompt"}
+    )
+
+    assert response.status_code == 502
+
+
+@pytest.mark.asyncio
+async def test_enhance_prompt_validation_error(async_client):
+    """Whitespace-only prompts are rejected before reaching Groq."""
+    response = await async_client.post("/api/enhance-prompt", json={"prompt": "   "})
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_repeat_enhancement_varies_the_original_instead_of_compounding(
+    async_client,
+):
+    """Attempt 2+ starts from what the visitor originally typed.
+
+    Feeding the last enhancement back in would snowball into an ever longer
+    paragraph; the previous result is only offered as something to differ from.
+    """
+    groq_create = _install_groq_replying("A brand new take")
+    already_enhanced = "Pop punk, 180 BPM, distorted power chords " * 3
+
+    response = await async_client.post(
+        "/api/enhance-prompt",
+        json={
+            "prompt": already_enhanced,
+            "attempt": 2,
+            "original_prompt": "Make a pop punk song about being a dad",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"prompt": "A brand new take"}
+    user_message = groq_create.call_args.kwargs["messages"][-1]["content"]
+    assert "Make a pop punk song about being a dad" in user_message
+    assert "alternative" in user_message.lower()
+    assert groq_create.call_args.kwargs["temperature"] > 0.7
+
+
+@pytest.mark.asyncio
+async def test_first_enhancement_ignores_attempt_context(async_client):
+    """Attempt 1 enhances the text as typed, at the normal temperature."""
+    groq_create = _install_groq_replying("Enhanced")
+
+    await async_client.post(
+        "/api/enhance-prompt", json={"prompt": "lofi beats", "attempt": 1}
+    )
+
+    user_message = groq_create.call_args.kwargs["messages"][-1]["content"]
+    assert "lofi beats" in user_message
+    assert "alternative" not in user_message.lower()
+    assert groq_create.call_args.kwargs["temperature"] == 0.7
+
+
+@pytest.mark.asyncio
+async def test_enhancement_attempt_is_capped_at_three(async_client):
+    """A fourth attempt is refused, bounding Groq spend per song."""
+    _install_groq_replying("never used")
+
+    response = await async_client.post(
+        "/api/enhance-prompt", json={"prompt": "lofi beats", "attempt": 4}
+    )
+
+    assert response.status_code == 422
+
+
+@pytest.mark.parametrize(
+    ("endpoint", "method_name", "payload"),
+    [
+        ("/api/generate-lyrics", "generate_lyrics", {"prompt": "an indie pop song"}),
+        ("/api/format-lyrics", "format_lyrics", {"lyrics": "some raw text"}),
+        ("/api/enhance-prompt", "enhance_prompt", {"prompt": "lofi beats"}),
+    ],
+)
+@pytest.mark.asyncio
+async def test_groq_endpoints_do_not_echo_upstream_error_text(
+    async_client, endpoint, method_name, payload
+):
+    """A Groq failure returns a fixed message, never the provider's own error text.
+
+    Groq's APIStatusError carries the upstream response body, which can name the
+    org, the key prefix and the request id. That belongs in the log, not in a
+    response any visitor can trigger.
+    """
+    from unittest.mock import AsyncMock, MagicMock
+    from app.main import app
+    from app.services.groq_service import GroqService
+
+    # Deliberately shaped like a real leak: the assertion below is that it does
+    # not reach the response body.
+    secret = "org_abc123 quota exceeded for key gsk_liveXYZ"  # pragma: allowlist secret
+    mock_service = MagicMock(spec=GroqService)
+    mock_service.is_configured = True
+    setattr(mock_service, method_name, AsyncMock(side_effect=RuntimeError(secret)))
+    app.state.groq_service = mock_service
+
+    response = await async_client.post(endpoint, json=payload)
+
+    assert response.status_code == 502
+    detail = response.json()["detail"]
+    assert "gsk_liveXYZ" not in detail
+    assert "org_abc123" not in detail

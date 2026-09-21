@@ -2,14 +2,6 @@
 
 This file provides guidance to AI coding agents when working with code in this repository.
 
-## Spec-Driven Development
-
-This repository follows **spec-driven development**. `SPEC.md` is the single source of truth for all requirements, architecture decisions, and API contracts.
-
-**Rules:**
-1. **New requirement → update `SPEC.md` first**, then implement. Never implement a feature that isn't reflected in the spec.
-2. **Every code change must keep `SPEC.md` in sync.** If an implementation deviates from or extends what the spec describes, update the spec in the same commit/PR.
-3. `SPEC.md` takes precedence over any other documentation (README, comments, etc.) when there is a conflict.
 
 ## Project Overview
 
@@ -50,6 +42,16 @@ Copy `.env.example` to `.env` and populate:
 - `SESSION_SECRET` — Generate with `openssl rand -hex 32`
 - `FRONTEND_URL` — CORS allowed origin (default: `http://localhost:3000`)
 - `NEXT_PUBLIC_API_URL` — Backend URL visible to browser (default: `http://localhost:8000`)
+- `GROQ_API_KEY` — Optional, required for AI lyric generation (`openai/gpt-oss-120b`)
+
+`make dev` reads `.env` through `load_dotenv()`, which walks up from the backend directory.
+`make dev-docker` cannot: the backend service mounts `./backend` at `/app`, so nothing inside
+the container sees the repo-root `.env`. Compose therefore passes it via `env_file`, which
+picks up new variables automatically — do **not** go back to enumerating them under
+`environment:`, which is how `GROQ_API_KEY` came to be missing and the AI endpoints returned
+`503` with a valid key configured. Deployed environments (Railway, Vercel) set their own
+variables and read neither file.
+
 
 ## Architecture
 
@@ -67,33 +69,42 @@ Browser → Next.js (Vercel, port 3000)
 - **Config:** `app/core/config.py` — Pydantic Settings, reads from env
 - **Rate limiting:** `app/core/limiter.py` — slowapi, keyed on client IP. Deliberately *not* the session cookie: the client supplies it, so rotating it minted a fresh allowance per request
 - **Warm state:** `app/core/warm_state.py` — in-memory dedupe window and monthly warm budget for GPU prewarm. Process-local, so correct only while the backend runs as a single instance (see `docs/adr/0001-speculative-gpu-prewarm.md`)
-- **Service:** `app/services/acestep_client.py` — all Modal API calls (httpx AsyncClient, HTTP/2, shared lifecycle)
+- **Service:** `app/services/acestep_client.py` — all Modal API calls (httpx AsyncClient, HTTP/2, shared lifecycle); `app/services/groq_service.py` — Groq LLM client for prompt enhancement and automated song lyric generation
 - **Routes:** `app/api/routes/generation.py` — all `/api/*` endpoints
 
 Key endpoints and their rate limits:
 | Endpoint | Limit |
 |---|---|
 | `POST /api/generate` | 5/min |
+| `POST /api/generate-lyrics` | 10/min |
+| `POST /api/format-lyrics` | 15/min |
+| `POST /api/enhance-prompt` | 10/min |
 | `GET /api/jobs/{task_id}` | 60/min |
 | `GET /api/audio/{task_id}` | 20/min |
 | `GET /api/examples/random` | 10/min |
 | `POST /api/warmup` | 10/min |
 
-The `ACEStepClient` is instantiated once at startup (lifespan), shared across requests, and closed on shutdown.
+The `ACEStepClient` and `GroqService` are instantiated once at startup (lifespan), shared across requests, and closed on shutdown. Both own connection pools, so construct them only inside the lifespan — building one at module scope as well orphans a pool that is never closed.
 
-**Examples:** `backend/examples/simple_mode/` and `backend/examples/text2music/` contain 170+ JSON files used by `GET /api/examples/random`.
+**Examples:** Curated examples in `backend/examples/text2music/`; `GET /api/examples/random` filters strictly to English examples with lyrics. The qualifying set is parsed once per directory and cached, so adding an example needs a restart to appear.
+
+**Dependencies:** `backend/pyproject.toml` + `uv.lock` are the source of truth, but the deployed image installs `backend/requirements.txt`. After changing dependencies, regenerate it or CI fails:
+
+```bash
+cd backend && uv export --no-dev --no-hashes -o requirements.txt
+```
 
 ### Frontend (`/frontend`)
 
 - **Tech:** Next.js 16, React 19, TypeScript, Tailwind CSS v4
-- **Entry:** `src/app/page.tsx` — home page, switches between form and job status views
-- **Form:** `src/components/MusicGeneratorForm.tsx` — unified form (prompt, genre, language, lyrics, instrumental), "Try an Example" button
+- **Entry:** `src/app/page.tsx` — home page, switches between wizard and job status views
+- **Wizard:** `src/components/MusicGeneratorWizard.tsx` — progressive 3-step card (prompt entry with example pre-caching, type selection, review & generation), replacing the legacy static form
 - **Job polling:** `src/components/JobStatus.tsx` — polls `/api/jobs/{task_id}`, shows progress and audio
 - **Audio:** `src/components/AudioPlayer.tsx` — wavesurfer.js waveform + playback
 - **Layout:** `src/components/NavBar.tsx`, `src/components/layout/` — sticky header, ambient background layer, global footer
 - **API client:** `src/lib/api.ts` — typed fetch wrapper with Zod validation and `ApiError` class
-- **Prewarm:** `src/lib/prewarm.ts` — wakes the GPU on the visitor's first interaction, then holds it with a visibility-gated, capped heartbeat. See SPEC.md FR-16/FR-17 and `docs/adr/0001-speculative-gpu-prewarm.md`
-- **Design system:** tokens live in `src/app/globals.css` and mirror the davidwest.dev portfolio (near-black surfaces, `#0ea5e9` accent, Inter, mono micro-labels). Consume semantic tokens (`text-primary`, `text-muted-foreground`, `.field-input`, `.surface-card`) instead of hard-coded hex. See SPEC.md §5.3.3.
+- **Prewarm:** `src/lib/prewarm.ts` — wakes the GPU on the visitor's first interaction, then holds it with a visibility-gated, capped heartbeat. See `docs/adr/0001-speculative-gpu-prewarm.md`
+- **Design system:** tokens live in `src/app/globals.css` and mirror the davidwest.dev portfolio (near-black surfaces, `#0ea5e9` accent, Inter, mono micro-labels). Consume semantic tokens (`text-primary`, `text-muted-foreground`, `.field-input`, `.surface-card`) instead of hard-coded hex.
 
 ### Versioning
 

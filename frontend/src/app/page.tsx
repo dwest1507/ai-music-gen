@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useEffect, useState } from "react";
-import { MusicGeneratorForm } from "@/components/MusicGeneratorForm";
+import { MusicGeneratorWizard } from "@/components/MusicGeneratorWizard";
 import { JobStatus } from "@/components/JobStatus";
 import { startPrewarm } from "@/lib/prewarm";
 
@@ -16,7 +16,7 @@ export default function Home() {
 
   // Wakes the GPU on the visitor's first interaction, so Modal wake overlaps the
   // time they spend reading this page rather than starting when they hit
-  // Generate. See SPEC.md FR-16 and ADR 0001.
+  // Generate. See docs/archive/SPEC.md FR-16 and ADR 0001.
   useEffect(() => startPrewarm((status) => setGpuWarm(status.warm)), []);
 
   const handleJobCreated = (jobId: string) => {
@@ -72,7 +72,7 @@ export default function Home() {
       <main className="flex w-full max-w-2xl flex-col items-center gap-8">
         {!currentJobId ? (
           <div className="animate-in fade-in slide-in-from-bottom-2 w-full duration-500">
-            <MusicGeneratorForm onJobCreated={handleJobCreated} gpuWarm={gpuWarm} />
+            <MusicGeneratorWizard onJobCreated={handleJobCreated} gpuWarm={gpuWarm} />
           </div>
         ) : (
           <div className="flex w-full flex-col items-center gap-6">

@@ -5,11 +5,17 @@ services:
       dockerfile: Dockerfile
     ports:
       - "8000:8000"
+    # Sourced wholesale rather than enumerated. The volume below mounts ./backend
+    # at /app, so load_dotenv() inside the container searches from /app upward and
+    # never sees the repo-root .env — this list is the only channel. Enumerating it
+    # meant every new variable had to be added in two places, and GROQ_API_KEY was
+    # missed, which surfaced as a 503 from the AI endpoints with a valid key set.
+    env_file:
+      - path: .env
+        required: false
     environment:
-      - ACESTEP_API_URL=${ACESTEP_API_URL}
-      - ACESTEP_API_KEY=${ACESTEP_API_KEY}
+      # Overrides .env: inside compose the frontend is reached on the published port.
       - FRONTEND_URL=http://localhost:3000
-      - SESSION_SECRET=${SESSION_SECRET}
     volumes:
       - ./backend:/app # Hot reload for development
 

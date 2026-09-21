@@ -39,7 +39,7 @@ npm run test
 ```
 
 ### Test Coverage Focus
-- **`MusicGeneratorForm.tsx`:** Verify the unified form renders every field, validates the prompt, sends only the fields the user filled in, and transitions correctly on submit. Cover the "Try an Example" flow separately from generation — the two have independent loading states.
+- **`MusicGeneratorWizard.tsx`:** Verify each of the three steps renders, that the prompt validates before Step 2, and that Back preserves what was entered. Cover the AI paths separately from generation — lyric generation, auto-formatting, prompt enhancement and regeneration each have their own loading state, their own attempt cap, and a fallback that must never block submission. Cover the "Try an Example" flow separately again: it pre-caches lyrics without advancing the step.
 - **`JobStatus.tsx`:** Use mocked API responses to fast-forward through `queued -> processing -> completed` states.
 - **`AudioPlayer.tsx`:** Verify playback controls, metadata display, and download proxy behaviors trigger correctly.
 
