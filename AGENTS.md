@@ -44,6 +44,14 @@ Copy `.env.example` to `.env` and populate:
 - `NEXT_PUBLIC_API_URL` — Backend URL visible to browser (default: `http://localhost:8000`)
 - `GROQ_API_KEY` — Optional, required for AI lyric generation (`openai/gpt-oss-120b`)
 
+`make dev` reads `.env` through `load_dotenv()`, which walks up from the backend directory.
+`make dev-docker` cannot: the backend service mounts `./backend` at `/app`, so nothing inside
+the container sees the repo-root `.env`. Compose therefore passes it via `env_file`, which
+picks up new variables automatically — do **not** go back to enumerating them under
+`environment:`, which is how `GROQ_API_KEY` came to be missing and the AI endpoints returned
+`503` with a valid key configured. Deployed environments (Railway, Vercel) set their own
+variables and read neither file.
+
 
 ## Architecture
 
