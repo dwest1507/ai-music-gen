@@ -5,10 +5,14 @@ on:
     branches: [ "main" ]
     paths:
       - 'backend/**'
+      - 'Dockerfile'
+      - '.github/workflows/backend-ci.yml'
   pull_request:
     branches: [ "main" ]
     paths:
       - 'backend/**'
+      - 'Dockerfile'
+      - '.github/workflows/backend-ci.yml'
 
 defaults:
   run:
@@ -37,8 +41,60 @@ jobs:
     - name: Install dependencies
       run: uv sync --frozen
 
+    # This job installs from uv.lock, but the deployed image installs from the
+    # requirements.txt export. A dependency added to one and not the other passes
+    # every test here and then fails at import time in production, which is exactly
+    # how `groq` shipped missing. Keep the two in step.
+    - name: Verify requirements.txt matches uv.lock
+      run: |
+        uv export --no-dev --no-hashes -o /tmp/requirements.expected.txt
+        # uv writes the output path into its own header, so compare the dependency
+        # lines only. The indented "# via" annotations start with spaces, not '#',
+        # and stay in the comparison.
+        grep -v '^#' requirements.txt > /tmp/req.actual.deps
+        grep -v '^#' /tmp/requirements.expected.txt > /tmp/req.expected.deps
+        if ! diff -u /tmp/req.actual.deps /tmp/req.expected.deps; then
+          echo "::error file=backend/requirements.txt::requirements.txt is out of date."
+          echo "Regenerate it with: cd backend && uv export --no-dev --no-hashes -o requirements.txt"
+          exit 1
+        fi
+
     - name: Lint with Ruff
       run: uv run ruff check .
 
     - name: Run tests with Pytest
       run: uv run pytest tests/local/ -v
+
+  # The tests above import the app from the source tree. This boots the artifact
+  # Railway actually runs, which is the only check that would have caught the
+  # missing dependency.
+  docker-boot:
+    name: Image builds and starts
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v7
+
+    - name: Build backend image
+      working-directory: .
+      run: docker build -t aimusicgen-backend:ci .
+
+    - name: Start container and wait for health
+      working-directory: .
+      run: |
+        docker run -d --name backend-ci -p 8000:8000 \
+          -e ACESTEP_API_URL="http://example.invalid" \
+          aimusicgen-backend:ci
+        for attempt in $(seq 1 30); do
+          if curl -sf http://localhost:8000/health > /dev/null; then
+            echo "Backend answered /health after ${attempt}s"
+            docker rm -f backend-ci > /dev/null
+            exit 0
+          fi
+          sleep 1
+        done
+        echo "::error::Backend did not serve /health within 30s"
+        docker logs backend-ci
+        docker rm -f backend-ci > /dev/null
+        exit 1

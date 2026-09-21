@@ -69,6 +69,17 @@ class GroqService:
         """Check whether the Groq client has an active API key."""
         return bool(self.client and self.api_key)
 
+    async def close(self) -> None:
+        """Release the underlying HTTP connection pool.
+
+        AsyncGroq wraps its own httpx client, so a service that outlives the app
+        without this leaks the pool. Idempotent, and a no-op when no key was set.
+        """
+        if self.client is None:
+            return
+        client, self.client = self.client, None
+        await client.close()
+
     async def _chat_completion(
         self,
         messages: list[dict[str, str]],

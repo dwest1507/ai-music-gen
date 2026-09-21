@@ -1550,3 +1550,41 @@ async def test_enhancement_attempt_is_capped_at_three(async_client):
     )
 
     assert response.status_code == 422
+
+
+@pytest.mark.parametrize(
+    ("endpoint", "method_name", "payload"),
+    [
+        ("/api/generate-lyrics", "generate_lyrics", {"prompt": "an indie pop song"}),
+        ("/api/format-lyrics", "format_lyrics", {"lyrics": "some raw text"}),
+        ("/api/enhance-prompt", "enhance_prompt", {"prompt": "lofi beats"}),
+    ],
+)
+@pytest.mark.asyncio
+async def test_groq_endpoints_do_not_echo_upstream_error_text(
+    async_client, endpoint, method_name, payload
+):
+    """A Groq failure returns a fixed message, never the provider's own error text.
+
+    Groq's APIStatusError carries the upstream response body, which can name the
+    org, the key prefix and the request id. That belongs in the log, not in a
+    response any visitor can trigger.
+    """
+    from unittest.mock import AsyncMock, MagicMock
+    from app.main import app
+    from app.services.groq_service import GroqService
+
+    # Deliberately shaped like a real leak: the assertion below is that it does
+    # not reach the response body.
+    secret = "org_abc123 quota exceeded for key gsk_liveXYZ"  # pragma: allowlist secret
+    mock_service = MagicMock(spec=GroqService)
+    mock_service.is_configured = True
+    setattr(mock_service, method_name, AsyncMock(side_effect=RuntimeError(secret)))
+    app.state.groq_service = mock_service
+
+    response = await async_client.post(endpoint, json=payload)
+
+    assert response.status_code == 502
+    detail = response.json()["detail"]
+    assert "gsk_liveXYZ" not in detail
+    assert "org_abc123" not in detail

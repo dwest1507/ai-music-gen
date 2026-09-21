@@ -29,21 +29,24 @@ async def lifespan(app: FastAPI):
     async with httpx.AsyncClient(http2=True, limits=limits) as http_client:
         app.state.acestep_client = ACEStepClient(http_client)
         app.state.warm_state = WarmState()
-        app.state.groq_service = GroqService(
+        # AsyncGroq owns its own connection pool, so the service is built once here
+        # and closed below rather than per request. Constructing it at module scope
+        # too would orphan that pool the moment this line overwrote it.
+        groq_service = GroqService(
             api_key=settings.GROQ_API_KEY,
             model=settings.GROQ_MODEL,
         )
-        yield
+        app.state.groq_service = groq_service
+        try:
+            yield
+        finally:
+            await groq_service.close()
 
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
     openapi_url=f"{settings.API_V1_STR}/openapi.json",
     lifespan=lifespan,
-)
-app.state.groq_service = GroqService(
-    api_key=settings.GROQ_API_KEY,
-    model=settings.GROQ_MODEL,
 )
 
 

@@ -9,7 +9,7 @@ import { apiFetch } from "./api";
  * submitted. Waking on the visitor's first interaction moves that wake into the
  * time they were going to spend reading the page and filling the form anyway.
  *
- * See SPEC.md FR-16/FR-17 and ADR 0001 for why this spends money speculatively.
+ * See docs/archive/SPEC.md FR-16/FR-17 and ADR 0001 for why this spends money speculatively.
  */
 
 /** Kept below the GPU's own scale-to-zero window so a beat lands before it lapses. */

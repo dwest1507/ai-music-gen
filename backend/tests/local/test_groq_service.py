@@ -42,6 +42,26 @@ async def test_groq_service_generate_lyrics_calls_completions():
 
 
 @pytest.mark.asyncio
+async def test_groq_service_close_releases_the_client():
+    service = GroqService(api_key="gsk_test_key")
+    mock_client = MagicMock()
+    mock_client.close = AsyncMock()
+    service.client = mock_client
+
+    await service.close()
+
+    mock_client.close.assert_awaited_once()
+    assert service.is_configured is False
+
+
+@pytest.mark.asyncio
+async def test_groq_service_close_is_safe_when_never_configured():
+    service = GroqService(api_key="")
+    await service.close()
+    assert service.is_configured is False
+
+
+@pytest.mark.asyncio
 async def test_groq_service_format_lyrics_raises_when_not_configured():
     service = GroqService(api_key="")
     with pytest.raises(RuntimeError, match="GroqService is not configured"):

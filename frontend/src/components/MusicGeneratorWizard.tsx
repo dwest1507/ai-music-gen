@@ -68,6 +68,12 @@ export function MusicGeneratorWizard({ onJobCreated, gpuWarm = null }: MusicGene
 
     const isBusy = isLoading || isLoadingExample || isLoadingLyrics || isFormattingLyrics || isEnhancing;
 
+    // Offered only while there is something to revert to. Derived from the text rather
+    // than from originalPrompt being set, so the button hides once the prompt is back
+    // to the original without throwing away the contrastive base for the next attempt.
+    const canRevertEnhancement =
+        originalPrompt !== null && prompt.trim() !== originalPrompt.trim();
+
     useEffect(() => {
         if (!isLoading) return;
         const tick = setInterval(() => setElapsedSeconds((s) => s + 1), 1000);
@@ -107,9 +113,12 @@ export function MusicGeneratorWizard({ onJobCreated, gpuWarm = null }: MusicGene
 
     const handlePromptChange = (val: string) => {
         setPrompt(val);
-        if (examplePrompt && val.trim() !== examplePrompt.trim()) {
-            setIsExampleModified(true);
-            setPreCachedLyrics("");
+        // A comparison rather than a latch: typing the example's prompt back in (or
+        // reverting an enhancement of it) makes its curated lyrics the right answer
+        // again. The premade lyrics are kept so that is possible — only a successful
+        // regeneration discards them.
+        if (examplePrompt) {
+            setIsExampleModified(val.trim() !== examplePrompt.trim());
         }
         if (lastGeneratedPrompt && val.trim() !== lastGeneratedPrompt.trim()) {
             setLastGeneratedPrompt(null);
@@ -146,8 +155,11 @@ export function MusicGeneratorWizard({ onJobCreated, gpuWarm = null }: MusicGene
 
     const handleRevertEnhancement = () => {
         if (originalPrompt === null) return;
+        // originalPrompt is kept, not cleared: it is both the contrastive base the
+        // backend needs for attempt 2+ and what the Revert button is derived from.
+        // Clearing it here sent the next attempt without an original_prompt, which
+        // silently dropped the backend onto its plain first-attempt path.
         handlePromptChange(originalPrompt);
-        setOriginalPrompt(null);
     };
 
     const handleStep1Next = (e: React.FormEvent) => {
@@ -349,7 +361,7 @@ export function MusicGeneratorWizard({ onJobCreated, gpuWarm = null }: MusicGene
                                     <span className="font-mono text-[10px] tracking-widest text-muted-foreground">
                                         {enhanceAttemptsLeft} left
                                     </span>
-                                    {originalPrompt !== null && (
+                                    {canRevertEnhancement && (
                                         <Button
                                             type="button"
                                             variant="ghost"

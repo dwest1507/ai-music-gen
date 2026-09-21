@@ -76,9 +76,15 @@ Key endpoints and their rate limits:
 | `GET /api/examples/random` | 10/min |
 | `POST /api/warmup` | 10/min |
 
-The `ACEStepClient` and `GroqService` are instantiated once at startup (lifespan), shared across requests, and closed on shutdown.
+The `ACEStepClient` and `GroqService` are instantiated once at startup (lifespan), shared across requests, and closed on shutdown. Both own connection pools, so construct them only inside the lifespan — building one at module scope as well orphans a pool that is never closed.
 
-**Examples:** Curated examples in `backend/examples/text2music/`; `GET /api/examples/random` filters strictly to English examples with lyrics.
+**Examples:** Curated examples in `backend/examples/text2music/`; `GET /api/examples/random` filters strictly to English examples with lyrics. The qualifying set is parsed once per directory and cached, so adding an example needs a restart to appear.
+
+**Dependencies:** `backend/pyproject.toml` + `uv.lock` are the source of truth, but the deployed image installs `backend/requirements.txt`. After changing dependencies, regenerate it or CI fails:
+
+```bash
+cd backend && uv export --no-dev --no-hashes -o requirements.txt
+```
 
 ### Frontend (`/frontend`)
 

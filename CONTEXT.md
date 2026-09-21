@@ -32,7 +32,8 @@ _Avoid_: Subject, theme, sample query, about
 
 **Example**:
 A curated, pre-written prompt shipped with the application that a user can load into
-the form with one click.
+the wizard with one click. It carries premade lyrics, which stay available as long as
+the prompt matches the example's — editing away from it and back restores them.
 _Avoid_: Sample, random sample, demo
 
 ### Latency

@@ -16,7 +16,7 @@ export default function Home() {
 
   // Wakes the GPU on the visitor's first interaction, so Modal wake overlaps the
   // time they spend reading this page rather than starting when they hit
-  // Generate. See SPEC.md FR-16 and ADR 0001.
+  // Generate. See docs/archive/SPEC.md FR-16 and ADR 0001.
   useEffect(() => startPrewarm((status) => setGpuWarm(status.warm)), []);
 
   const handleJobCreated = (jobId: string) => {

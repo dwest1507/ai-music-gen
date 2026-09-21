@@ -295,6 +295,40 @@ describe('MusicGeneratorWizard - Step 3 Lyric Review & Generation', () => {
         );
     });
 
+    it('restores an example\'s premade lyrics when the prompt is typed back to it', async () => {
+        // "Modified" has to be a comparison, not a latch: editing an example prompt and
+        // undoing the edit leaves the curated lyrics as the right answer again, and
+        // fetching AI lyrics instead would spend a Groq call to get something worse.
+        mockGetRandomExample.mockResolvedValue({
+            prompt: 'An upbeat indie track with sparkling guitars',
+            lyrics: '[Verse 1]\nWalking down the sunny street',
+            vocal_language: 'en',
+            instrumental: false,
+        });
+
+        render(<MusicGeneratorWizard onJobCreated={mockOnJobCreated} />);
+        fireEvent.click(screen.getByRole('button', { name: /Try an Example/i }));
+        await waitFor(() => {
+            expect(screen.getByRole('textbox', { name: /prompt/i })).toHaveValue(
+                'An upbeat indie track with sparkling guitars'
+            );
+        });
+
+        const promptInput = screen.getByRole('textbox', { name: /prompt/i });
+        fireEvent.change(promptInput, { target: { value: 'Something else entirely' } });
+        fireEvent.change(promptInput, {
+            target: { value: 'An upbeat indie track with sparkling guitars' },
+        });
+
+        fireEvent.click(screen.getByRole('button', { name: /Next|Continue/i }));
+        fireEvent.click(screen.getByRole('button', { name: /Song with Lyrics/i }));
+
+        expect(mockGenerateLyrics).not.toHaveBeenCalled();
+        expect(screen.getByRole('textbox', { name: /lyrics/i })).toHaveValue(
+            '[Verse 1]\nWalking down the sunny street'
+        );
+    });
+
     it('modifying an example prompt discards premade lyrics and generates fresh AI lyrics', async () => {
         mockGetRandomExample.mockResolvedValue({
             prompt: 'An upbeat indie track with sparkling guitars',
@@ -746,6 +780,29 @@ describe('MusicGeneratorWizard - Prompt Enhancement (#84)', () => {
         expect(mockEnhancePrompt).toHaveBeenCalledTimes(1);
         expect(screen.getByText(/2 left/i)).toBeInTheDocument();
         expect(screen.queryByRole('button', { name: /Revert to Original/i })).not.toBeInTheDocument();
+    });
+
+    it('still contrasts against the typed original after a revert', async () => {
+        // Reverting drops the enhanced text but not the visitor's original, so the
+        // next attempt is still a numbered variation on it rather than silently
+        // falling back to the backend's plain first-attempt path.
+        mockEnhancePrompt
+            .mockResolvedValueOnce({ prompt: 'Take one' })
+            .mockResolvedValueOnce({ prompt: 'Take two' });
+        renderStep1('lofi beats');
+
+        fireEvent.click(enhanceButton());
+        await waitFor(() => expect(promptBox()).toHaveValue('Take one'));
+        fireEvent.click(screen.getByRole('button', { name: /Revert to Original/i }));
+        expect(promptBox()).toHaveValue('lofi beats');
+
+        fireEvent.click(enhanceButton());
+        await waitFor(() => expect(promptBox()).toHaveValue('Take two'));
+
+        expect(mockEnhancePrompt.mock.calls).toEqual([
+            ['lofi beats', 1, undefined],
+            ['lofi beats', 2, 'lofi beats'],
+        ]);
     });
 
     it('repeat enhancements vary the original prompt and stop after three attempts', async () => {

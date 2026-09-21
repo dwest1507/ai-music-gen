@@ -11,3 +11,5 @@
 .claude
 
 example_prompt.txt
+
+*.log

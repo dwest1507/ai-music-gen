@@ -52,7 +52,25 @@ textarea in Step 3 of the progressive creation wizard before generation is submi
     "Revert to Original" restores the typed text without spending an attempt. The counter
     survives back/forward navigation and resets only when "Generate Another Song" remounts
     the wizard. A `503` disables the button with a tooltip; other failures show an inline
-    error and spend no attempt.
+    error and spend no attempt. "Revert to Original" restores the typed text but deliberately
+    **retains** it as the contrastive base, so a later attempt is still a numbered variation
+    on the original rather than silently falling back to the plain first-attempt path. The
+    button's visibility is derived from the current text differing from the original, not
+    from the base being set.
+
+### Service lifecycle
+
+`AsyncGroq` owns an httpx connection pool, so `GroqService` is constructed once inside the
+FastAPI lifespan and closed on shutdown, alongside `ACEStepClient`. It is deliberately **not**
+also constructed at module scope: a second instance there is overwritten the moment the
+lifespan runs, orphaning a pool that nothing ever closes.
+
+### Error contract
+
+A Groq failure surfaces as `502` with a fixed message and never the provider's own error
+text. Groq's `APIStatusError` carries the upstream response body, which can name the org, the
+key prefix and the request id; these endpoints are reachable by any visitor, so the exception
+goes to the log and only a generic message goes over the wire.
 
 ## Consequences
 
@@ -66,3 +84,7 @@ textarea in Step 3 of the progressive creation wizard before generation is submi
   degrades gracefully to manual lyric entry.
 - Rate limiting is enforced at 10 requests per minute per IP for lyric generation and prompt
   enhancement, and 15 requests per minute per IP for lyric formatting.
+- Adding `groq` made the backend's dependency export a deployment surface: the image installs
+  `backend/requirements.txt`, not `uv.lock`, and shipping the two out of step took production
+  down with `ModuleNotFoundError` on a fully green test run. CI now verifies the export matches
+  the lock file and boots the built image against `/health`. See `docs/CI_CD_WORKFLOW.md`.

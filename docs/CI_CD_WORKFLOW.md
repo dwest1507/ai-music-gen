@@ -26,6 +26,31 @@ This approach saves money, guarantees clean test environments that match feature
 
 ---
 
+## Continuous Integration Checks
+
+`backend-ci.yml` and `frontend-ci.yml` gate every PR touching their respective trees.
+
+### Backend (`backend-ci.yml`)
+Two jobs run in parallel:
+
+1. **`build-and-test`** — installs from `uv.lock` (`uv sync --frozen`), then runs Ruff and `pytest tests/local/`.
+2. **`docker-boot`** — builds the root `Dockerfile` and waits for the container to answer `GET /health`.
+
+The second job exists because the first cannot fail on a dependency problem. Tests import the app from the source tree against `uv.lock`, while the deployed image installs `backend/requirements.txt` — a `uv export` artifact. A dependency added to `pyproject.toml` but not exported passes every test and then crashes on import in production. That is exactly how `groq` reached Railway missing, taking the backend down with `ModuleNotFoundError: No module named 'groq'` on a fully green build.
+
+`build-and-test` therefore also runs a **`Verify requirements.txt matches uv.lock`** step. After changing backend dependencies:
+
+```bash
+cd backend && uv export --no-dev --no-hashes -o requirements.txt
+```
+
+Because the deployed artifact is the root `Dockerfile`, both workflows' path filters include it alongside `backend/**`.
+
+### Frontend (`frontend-ci.yml`)
+Runs ESLint, Vitest, and `npm run build` — the production build catches imports left dangling by a deleted component, which type-checking alone in test files can miss.
+
+---
+
 ## Automated Releases
 
 We use **Release Please** to automate the versioning and release process via GitHub Pull Requests.

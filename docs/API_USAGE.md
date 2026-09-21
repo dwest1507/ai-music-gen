@@ -92,23 +92,35 @@ Proxies the audio download from the upstream Modal API. The `path` query paramet
 Returns the list of DiT models available on the connected ACE-Step API instance.
 
 ### `POST /api/random-sample`
-Returns realistic, random parameters to prefill the generation form.
+Returns realistic, random parameters for a generation request. An upstream passthrough; the
+wizard does not call it — it uses `GET /api/examples/random` instead.
 
 ### `POST /api/format`
 Enhances formatting of user prompts or lyrics via an upstream language model.
 
 ### `GET /api/examples/random`
-Returns one curated example, drawn at random from the bundled collections, shaped for the
-generation form.
+Returns one curated example, drawn at random from `backend/examples/text2music/`, shaped for
+the wizard's Step 1. The pool is filtered to examples that are English **and** carry lyrics, so
+`vocal_language` is always `"en"` and `instrumental` is always `false`; the wizard pre-caches
+the returned `lyrics` so choosing "Song with Lyrics" needs no Groq call. The qualifying set is
+parsed once per process, so a newly added example file requires a restart.
 
 ```json
 {
-  "prompt": "a soft Bengali love song for a quiet evening",
-  "lyrics": "",
-  "vocal_language": "bn",
+  "prompt": "An upbeat indie track with sparkling guitars",
+  "lyrics": "[Verse 1]\nWalking down the sunny street...",
+  "vocal_language": "en",
   "instrumental": false
 }
 ```
+
+**Errors:** `404` when the examples directory is missing or holds no qualifying example.
+
+> **Groq-backed endpoints** (`generate-lyrics`, `format-lyrics`, `enhance-prompt`) share an error
+> contract. A `502` body carries a fixed message — `"Lyric generation failed"`, `"Lyric formatting
+> failed"`, `"Prompt enhancement failed"` — and never the provider's own error text, which can name
+> the org, key prefix and request id. The underlying exception goes to the backend log instead. Do
+> not parse `detail` to distinguish upstream causes; treat any `502` as "try again".
 
 ### `POST /api/generate-lyrics`
 Generates structured song lyrics (`[Verse]`, `[Chorus]`, etc.) using Groq LLM based on user prompt.
@@ -136,6 +148,9 @@ Generates structured song lyrics (`[Verse]`, `[Chorus]`, etc.) using Groq LLM ba
 ```
 
 The three-regeneration cap per prompt is enforced in the wizard, not by the backend, which is stateless; the rate limit above is the server-side bound.
+
+**Errors:** `422` for an empty/whitespace-only prompt, `503` when `GROQ_API_KEY` is not configured,
+`502` when Groq fails.
 
 ### `POST /api/format-lyrics`
 Formats user-written or edited lyrics into structured sections with header tags (`[Verse]`, `[Chorus]`, `[Bridge]`, etc.) without altering any of the user's words. Used as an auto-formatting step before generation when lyrics have been manually edited.
