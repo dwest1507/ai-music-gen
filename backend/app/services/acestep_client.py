@@ -18,6 +18,12 @@ logger = logging.getLogger(__name__)
 DEFAULT_TIMEOUT = 60 * 5
 AUDIO_DOWNLOAD_TIMEOUT = 60 * 5
 
+# Every call below sets follow_redirects=True. Modal answers a web request that
+# outlives 150 s with a 303 to a result URL that blocks until the response is
+# ready, and a GPU wake that rebuilds its snapshot takes longer than that.
+# Unfollowed, the wake surfaced as a non-JSON 502 while the request it carried
+# went on running on the GPU.
+
 
 class ACEStepError(Exception):
     """Base exception for ACE-Step API errors."""
@@ -93,6 +99,7 @@ class ACEStepClient:
                 f"{self.base_url}/release_task",
                 json=params,
                 headers=self._headers(),
+                follow_redirects=True,
                 timeout=DEFAULT_TIMEOUT,
             )
             return self._unwrap(resp)
@@ -112,6 +119,7 @@ class ACEStepClient:
                 f"{self.base_url}/query_result",
                 json={"task_id_list": task_ids},
                 headers=self._headers(),
+                follow_redirects=True,
                 timeout=DEFAULT_TIMEOUT,
             )
             return self._unwrap(resp)
@@ -135,10 +143,10 @@ class ACEStepClient:
                 headers=self._headers(),
                 timeout=AUDIO_DOWNLOAD_TIMEOUT,
             )
-            resp = await self.client.send(req, stream=True)
+            resp = await self.client.send(req, stream=True, follow_redirects=True)
             if resp.status_code != 200:
                 await resp.aread()
-                resp.close()
+                await resp.aclose()
                 raise ACEStepError("Failed to download audio.", resp.status_code)
             return resp
         except httpx.TimeoutException:
@@ -154,6 +162,7 @@ class ACEStepClient:
             resp = await self.client.get(
                 f"{self.base_url}/health",
                 headers=self._headers(),
+                follow_redirects=True,
                 timeout=10.0,
             )
             return self._unwrap(resp)
@@ -166,6 +175,7 @@ class ACEStepClient:
             resp = await self.client.get(
                 f"{self.base_url}/v1/models",
                 headers=self._headers(),
+                follow_redirects=True,
                 timeout=DEFAULT_TIMEOUT,
             )
             return self._unwrap(resp)
@@ -179,6 +189,7 @@ class ACEStepClient:
                 f"{self.base_url}/create_random_sample",
                 json=params or {},
                 headers=self._headers(),
+                follow_redirects=True,
                 timeout=DEFAULT_TIMEOUT,
             )
             return self._unwrap(resp)
@@ -192,6 +203,7 @@ class ACEStepClient:
                 f"{self.base_url}/format_input",
                 json=params,
                 headers=self._headers(),
+                follow_redirects=True,
                 timeout=DEFAULT_TIMEOUT,
             )
             return self._unwrap(resp)
