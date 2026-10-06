@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "vitest"
+    "test": "vitest",
+    "audit:deps": "node scripts/npm-audit.mjs"
   },
   "dependencies": {
     "class-variance-authority": "^0.7.1",
