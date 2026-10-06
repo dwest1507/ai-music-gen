@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.1](https://github.com/dwest1507/ai-music-gen/compare/ai-music-gen-v0.12.0...ai-music-gen-v0.12.1) (2026-10-06)
+
+
+### Bug Fixes
+
+* **backend:** stop losing GPU tasks to Modal scale-down and long wakes ([#95](https://github.com/dwest1507/ai-music-gen/issues/95)) ([24e46a4](https://github.com/dwest1507/ai-music-gen/commit/24e46a4bbf5b5f3c329e6bee4e97d46cf74dcc7a))
+
 ## [0.12.0](https://github.com/dwest1507/ai-music-gen/compare/ai-music-gen-v0.11.0...ai-music-gen-v0.12.0) (2026-09-21)
 
 
