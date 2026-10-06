@@ -568,6 +568,33 @@ async def warmup(request: Request, response: Response):
     return {"warm": warm}
 
 
+@router.get("/gpu-ready")
+@limiter.limit("30/minute")
+async def gpu_ready(request: Request, response: Response):
+    """Report whether the GPU can take a Task right now.
+
+    The frontend polls this before submitting instead of holding /api/generate
+    open through a Modal wake: a snapshot rebuild takes minutes, and Railway
+    closes any request that sends nothing for five (ADR 0005). Unlike prewarm it
+    asks the GPU every time and ignores the warm budget. A cached "cold" would
+    keep the visitor waiting after the GPU came up, and a spent budget must not
+    stop someone who has actually asked for a song.
+    """
+    client = _get_client(request)
+    try:
+        await client.health_check()
+    except ACEStepError:
+        # A waking container cannot answer inside the health check's ten seconds,
+        # so this is the probe's normal cold answer, not an error to surface.
+        return {"ready": False}
+    except Exception:
+        # Anything the client did not convert, such as a connection dropped by a
+        # container still coming up. The visitor's wait carries on either way.
+        logger.exception("GPU readiness probe failed with an unconverted error")
+        return {"ready": False}
+    return {"ready": True}
+
+
 @router.get("/models")
 @limiter.limit("30/minute")
 async def list_models(request: Request, response: Response):

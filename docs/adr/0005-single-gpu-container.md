@@ -47,7 +47,20 @@ read that as "processing", so the visitor waited out the full ten-minute timeout
   now follows them. Long wakes come from snapshot rebuilds, and those are frequent:
   snapshots are tied to the GPU type, and Modal may run a `gpu="H100"` request on an H200.
   A production test on 2026-10-06 saw consecutive cold starts land on an H200 and then an
-  H100, and the second rebuilt its snapshot in about 6 minutes.
+  H100, and the second rebuilt its snapshot in about 6 minutes. The fork now pins
+  `gpu="H100!"`, which halves the snapshots to build but cannot stop rebuilds: Modal
+  still needs two or three per GPU type and recaptures them after every deploy.
+- **The browser must never wait on a Modal wake in a single request.** Following the 303
+  let the backend wait out a long wake, but Railway closes any request that sends no data
+  for five minutes. On 2026-10-06 a five-and-a-half-minute rebuild outlasted that: the
+  song was made, but the browser got Railway's error page, with no CORS header, instead of
+  the task id. So the frontend now polls `GET /api/gpu-ready` before submitting. Each
+  probe returns within the health check's ten seconds, and `/api/generate` goes out only
+  once the GPU answers. Unlike `/api/warmup`, the probe asks the GPU every time and
+  ignores the warm budget. Prewarm's dedupe would report a stale "cold", and a visitor
+  who has asked for a song must not be blocked by a budget meant for speculative wakes.
+  Following redirects stays as the safety net for a GPU that goes cold between the probe
+  and the submit.
 - A Task can still be lost if nothing polls for `scaledown_window` (300 s) while it runs,
   for example when the visitor closes the tab. Nobody is waiting for that Task, so the
   loss does not matter.

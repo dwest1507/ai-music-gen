@@ -83,6 +83,7 @@ Key endpoints and their rate limits:
 | `GET /api/audio/{task_id}` | 20/min |
 | `GET /api/examples/random` | 10/min |
 | `POST /api/warmup` | 10/min |
+| `GET /api/gpu-ready` | 30/min |
 
 The `ACEStepClient` and `GroqService` are instantiated once at startup (lifespan), shared across requests, and closed on shutdown. Both own connection pools, so construct them only inside the lifespan — building one at module scope as well orphans a pool that is never closed.
 
@@ -104,6 +105,7 @@ cd backend && uv export --no-dev --no-hashes -o requirements.txt
 - **Layout:** `src/components/NavBar.tsx`, `src/components/layout/` — sticky header, ambient background layer, global footer
 - **API client:** `src/lib/api.ts` — typed fetch wrapper with Zod validation and `ApiError` class
 - **Prewarm:** `src/lib/prewarm.ts` — wakes the GPU on the visitor's first interaction, then holds it with a visibility-gated, capped heartbeat. See `docs/adr/0001-speculative-gpu-prewarm.md`
+- **GPU readiness:** `src/lib/gpuReady.ts` — on submit, polls `GET /api/gpu-ready` until the GPU answers, then the wizard sends `/api/generate`. Never hold a single request open through a Modal wake: Railway closes any request idle for five minutes. See `docs/adr/0005-single-gpu-container.md`
 - **Design system:** tokens live in `src/app/globals.css` and mirror the davidwest.dev portfolio (near-black surfaces, `#0ea5e9` accent, Inter, mono micro-labels). Consume semantic tokens (`text-primary`, `text-muted-foreground`, `.field-input`, `.surface-card`) instead of hard-coded hex.
 
 ### Versioning
