@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.2](https://github.com/dwest1507/ai-music-gen/compare/ai-music-gen-v0.12.1...ai-music-gen-v0.12.2) (2026-10-06)
+
+
+### Bug Fixes
+
+* wait for the GPU before submitting so Railway cannot drop the response ([#98](https://github.com/dwest1507/ai-music-gen/issues/98)) ([77df769](https://github.com/dwest1507/ai-music-gen/commit/77df769ab7ba2094ffabd99251ed548dde5a5424))
+
 ## [0.12.1](https://github.com/dwest1507/ai-music-gen/compare/ai-music-gen-v0.12.0...ai-music-gen-v0.12.1) (2026-10-06)
 
 
