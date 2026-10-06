@@ -3,6 +3,7 @@
 import * as React from "react";
 import { useState, useEffect } from "react";
 import { apiFetch, GenerateRequest, GenerateResponse, getRandomExample, generateLyrics, formatLyrics, enhancePrompt, ApiError } from "@/lib/api";
+import { waitForGpuReady } from "@/lib/gpuReady";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AlertCircle, ArrowLeft, ArrowRight, Check, Mic, Music, Radio, RefreshCw, Sparkles } from "lucide-react";
@@ -60,6 +61,9 @@ export function MusicGeneratorWizard({ onJobCreated, gpuWarm = null }: MusicGene
     const [enhanceUnavailable, setEnhanceUnavailable] = useState(false);
 
     const [isLoading, setIsLoading] = useState(false);
+    // What this submission's readiness probes found. Fresher than gpuWarm, which is
+    // prewarm's last answer and may be minutes old, so it wins once known.
+    const [gpuPhase, setGpuPhase] = useState<"unknown" | "waking" | "up">("unknown");
     const [isLoadingExample, setIsLoadingExample] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [lastSubmitTime, setLastSubmitTime] = useState(0);
@@ -67,6 +71,8 @@ export function MusicGeneratorWizard({ onJobCreated, gpuWarm = null }: MusicGene
     const [elapsedSeconds, setElapsedSeconds] = useState(0);
 
     const isBusy = isLoading || isLoadingExample || isLoadingLyrics || isFormattingLyrics || isEnhancing;
+    // Until a probe answers, fall back to prewarm's last word on the GPU.
+    const isWakingGpu = gpuPhase === "waking" || (gpuPhase === "unknown" && gpuWarm === false);
 
     // Offered only while there is something to revert to. Derived from the text rather
     // than from originalPrompt being set, so the button hides once the prompt is back
@@ -263,6 +269,7 @@ export function MusicGeneratorWizard({ onJobCreated, gpuWarm = null }: MusicGene
         setIsLoading(true);
         setLoadingMessageIndex(0);
         setElapsedSeconds(0);
+        setGpuPhase("unknown");
         setError(null);
         setLastSubmitTime(Date.now());
 
@@ -277,6 +284,12 @@ export function MusicGeneratorWizard({ onJobCreated, gpuWarm = null }: MusicGene
                 lyrics: isInstrumentalSubmission ? "[Instrumental]" : lyricsToSubmit,
                 instrumental: isInstrumentalSubmission ? true : undefined,
             };
+
+            // Never hold /api/generate open through a Modal wake: Railway drops a
+            // request that sends nothing for five minutes, and a snapshot rebuild can
+            // take longer. Wait with short probes, then submit to a GPU that is up.
+            await waitForGpuReady(() => setGpuPhase("waking"));
+            setGpuPhase("up");
 
             const data = await apiFetch<GenerateResponse>("/api/generate", {
                 method: "POST",
@@ -656,7 +669,7 @@ export function MusicGeneratorWizard({ onJobCreated, gpuWarm = null }: MusicGene
                                 {isFormattingLyrics
                                     ? "Formatting lyrics..."
                                     : isLoading
-                                    ? `${gpuWarm === false ? "Waking GPU" : "Submitting"} · ${elapsedSeconds}s`
+                                    ? `${isWakingGpu ? "Waking GPU" : "Submitting"} · ${elapsedSeconds}s`
                                     : "Generate Song"}
                             </Button>
                         </div>

@@ -2,6 +2,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, MockedFunction } from 'vitest';
 import { MusicGeneratorWizard } from '@/components/MusicGeneratorWizard';
 import { apiFetch, getRandomExample, generateLyrics, formatLyrics, enhancePrompt, ApiError } from '@/lib/api';
+import { waitForGpuReady } from '@/lib/gpuReady';
 import React from 'react';
 
 // Mock dependencies
@@ -17,7 +18,13 @@ vi.mock('@/lib/api', async (importOriginal) => {
     };
 });
 
+// Resolves at once by default: the GPU is up, so a submission goes straight through.
+vi.mock('@/lib/gpuReady', () => ({
+    waitForGpuReady: vi.fn(async () => {}),
+}));
+
 const mockApiFetch = apiFetch as MockedFunction<typeof apiFetch>;
+const mockWaitForGpuReady = waitForGpuReady as MockedFunction<typeof waitForGpuReady>;
 const mockGetRandomExample = getRandomExample as MockedFunction<typeof getRandomExample>;
 const mockGenerateLyrics = generateLyrics as MockedFunction<typeof generateLyrics>;
 const mockFormatLyrics = formatLyrics as MockedFunction<typeof formatLyrics>;
@@ -1086,5 +1093,77 @@ describe('MusicGeneratorWizard - Contrastive Lyric Regeneration (#86)', () => {
 
             expect(regenerateButton()).toHaveTextContent(/3 left/i);
         });
+    });
+});
+
+
+describe('MusicGeneratorWizard - Waiting for the GPU before submitting (ADR 0005)', () => {
+    const mockOnJobCreated = vi.fn();
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+        mockApiFetch.mockResolvedValue({ task_id: 'task-after-wake', status: 'queued' });
+    });
+
+    const submitInstrumental = (gpuWarm: boolean | null = null) => {
+        render(<MusicGeneratorWizard onJobCreated={mockOnJobCreated} gpuWarm={gpuWarm} />);
+        fireEvent.change(screen.getByRole('textbox', { name: /prompt/i }), {
+            target: { value: 'A cinematic Hans Zimmer style soundtrack' },
+        });
+        fireEvent.click(screen.getByRole('button', { name: /Next|Continue/i }));
+        fireEvent.click(screen.getByRole('button', { name: /Instrumental/i }));
+        fireEvent.click(screen.getByRole('button', { name: /Generate Song/i }));
+    };
+
+    it('holds the submission until the GPU is ready, then submits', async () => {
+        let gpuUp!: () => void;
+        mockWaitForGpuReady.mockImplementationOnce(
+            () => new Promise<void>((resolve) => { gpuUp = resolve; }),
+        );
+
+        submitInstrumental();
+
+        await waitFor(() => expect(mockWaitForGpuReady).toHaveBeenCalledTimes(1));
+        expect(mockApiFetch).not.toHaveBeenCalled();
+
+        gpuUp();
+
+        await waitFor(() => expect(mockOnJobCreated).toHaveBeenCalledWith('task-after-wake'));
+        expect(mockApiFetch).toHaveBeenCalledWith('/api/generate', expect.objectContaining({ method: 'POST' }));
+    });
+
+    it('says the GPU is waking when the probe finds it cold, whatever prewarm last reported', async () => {
+        // Prewarm's answer can be minutes old; the container may have scaled down since.
+        mockWaitForGpuReady.mockImplementationOnce((onWaking) => {
+            onWaking?.();
+            return new Promise<void>(() => {});
+        });
+
+        submitInstrumental(true);
+
+        expect(await screen.findByText(/Waking GPU/i)).toBeInTheDocument();
+        expect(screen.queryByText(/Submitting/i)).not.toBeInTheDocument();
+    });
+
+    it('says it is submitting once the probe finds the GPU up, even if prewarm last saw it cold', async () => {
+        mockApiFetch.mockImplementationOnce(() => new Promise(() => {}));
+
+        submitInstrumental(false);
+
+        expect(await screen.findByText(/Submitting/i)).toBeInTheDocument();
+        expect(screen.queryByText(/Waking GPU/i)).not.toBeInTheDocument();
+    });
+
+    it('shows why and submits nothing when the GPU never comes up', async () => {
+        mockWaitForGpuReady.mockRejectedValueOnce(
+            new Error('The GPU is taking longer than usual to start. Please try again in a minute.'),
+        );
+
+        submitInstrumental();
+
+        expect(await screen.findByText(/taking longer than usual/i)).toBeInTheDocument();
+        expect(mockApiFetch).not.toHaveBeenCalled();
+        expect(mockOnJobCreated).not.toHaveBeenCalled();
+        expect(screen.getByRole('button', { name: /Generate Song/i })).toBeEnabled();
     });
 });

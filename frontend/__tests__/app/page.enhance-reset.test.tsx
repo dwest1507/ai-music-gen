@@ -10,6 +10,7 @@ vi.mock('@/lib/api', async (importOriginal) => {
 });
 
 vi.mock('@/lib/prewarm', () => ({ startPrewarm: () => () => {} }));
+vi.mock('@/lib/gpuReady', () => ({ waitForGpuReady: async () => {} }));
 
 vi.mock('@/components/JobStatus', () => ({
     JobStatus: ({ jobId }: { jobId: string }) => <div data-testid="job-status">{jobId}</div>,
