@@ -303,6 +303,40 @@ async def test_get_job_status_processing(async_client, mock_acestep_client):
 
 
 @pytest.mark.asyncio
+async def test_get_job_status_reports_task_unknown_upstream_as_failed(
+    async_client, mock_acestep_client
+):
+    # ACE-Step keeps tasks in container memory and answers an id it does not hold
+    # with this exact shape. Read as "processing", a task lost to a GPU container
+    # being stopped mid-generation left the visitor waiting out the full timeout.
+    mock_acestep_client.query_result.return_value = [
+        {"task_id": "test-task-123", "result": "[]", "status": 0}
+    ]
+
+    response = await async_client.get("/api/jobs/test-task-123")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "failed"
+    assert "interrupted" in data["error"]
+
+
+@pytest.mark.asyncio
+async def test_get_job_status_queued_task_still_processing(
+    async_client, mock_acestep_client
+):
+    import json
+
+    queued = json.dumps([{"file": "", "status": 0, "stage": "queued", "progress": 0.0}])
+    mock_acestep_client.query_result.return_value = [
+        {"task_id": "test-task-123", "result": queued, "status": 0}
+    ]
+
+    response = await async_client.get("/api/jobs/test-task-123")
+    assert response.status_code == 200
+    assert response.json()["status"] == "processing"
+
+
+@pytest.mark.asyncio
 async def test_get_job_status_failed(async_client, mock_acestep_client):
     mock_acestep_client.query_result.return_value = [
         {"status": 2, "error": "Out of GPU memory"}

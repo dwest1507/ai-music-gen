@@ -316,6 +316,10 @@ _STATUS_MAP = {
     2: "failed",
 }
 
+# ACE-Step's `/query_result` answer for a task id it holds no record of. A task it
+# does hold always carries at least one result item, even while still queued.
+_UNKNOWN_TASK_RESULT = "[]"
+
 
 def _parse_acestep_result(task: dict) -> list[dict]:
     """Parse the stringified JSON 'result' field from the ACE-Step API."""
@@ -391,7 +395,15 @@ async def get_job_status(task_id: str, request: Request, response: Response):
         "status": mapped_status,
     }
 
-    if mapped_status == "completed":
+    if status_code == 0 and task.get("result") == _UNKNOWN_TASK_RESULT:
+        # Tasks live only in the memory of the GPU container that accepted them.
+        # If Modal stops that container mid-generation the task is gone for good,
+        # and every later query reports it like this instead of as an error.
+        response_data["status"] = "failed"
+        response_data["error"] = (
+            "Generation was interrupted on the GPU server. Please try again."
+        )
+    elif mapped_status == "completed":
         parsed_results = _parse_acestep_result(task)
         audio_files = []
         metadata = {}

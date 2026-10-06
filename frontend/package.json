@@ -7,13 +7,14 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "vitest"
+    "test": "vitest",
+    "audit:deps": "node scripts/npm-audit.mjs"
   },
   "dependencies": {
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-react": "^1.45.0",
-    "next": "16.3.5",
+    "next": "16.4.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "tailwind-merge": "^3.6.0",
@@ -34,7 +35,7 @@
     "@vitejs/plugin-react": "^6.1.1",
     "babel-plugin-react-compiler": "1.0.0",
     "eslint": "^9.39.5",
-    "eslint-config-next": "16.3.5",
+    "eslint-config-next": "16.4.0",
     "jsdom": "^30.0.1",
     "tailwindcss": "^4",
     "typescript": "^5",

@@ -1,4 +1,5 @@
 import pytest
+import httpx
 from httpx import Response, TimeoutException
 from unittest.mock import AsyncMock
 from app.services.acestep_client import ACEStepClient, ACEStepError
@@ -189,17 +190,16 @@ async def test_query_result_connect_error(acestep_client, mock_httpx_client):
 
 
 @pytest.mark.asyncio
-async def test_download_audio_stream_non_200(acestep_client, mock_httpx_client):
-    from unittest.mock import MagicMock
+async def test_download_audio_stream_non_200():
+    # A real streamed response, not a mock: closing it with the sync close() raised
+    # RuntimeError and turned every upstream 404 into an unhandled 500.
+    transport = httpx.MockTransport(lambda request: httpx.Response(404))
+    async with httpx.AsyncClient(transport=transport) as http_client:
+        client = ACEStepClient(http_client)
+        client.base_url = "http://fake-api"
 
-    mock_resp = MagicMock()
-    mock_resp.status_code = 404
-    mock_resp.aread = AsyncMock()
-    mock_resp.close = MagicMock()
-    mock_httpx_client.send.return_value = mock_resp
-
-    with pytest.raises(ACEStepError) as exc:
-        await acestep_client.download_audio_stream("missing.mp3")
+        with pytest.raises(ACEStepError) as exc:
+            await client.download_audio_stream("missing.mp3")
     assert exc.value.status_code == 404
 
 
@@ -341,3 +341,70 @@ async def test_format_input_connect_error(acestep_client, mock_httpx_client):
     mock_httpx_client.post.side_effect = ConnectError("refused")
     with pytest.raises(ACEStepError):
         await acestep_client.format_input({"prompt": "raw"})
+
+
+def _modal_long_request_transport(
+    body: bytes, content_type: str
+) -> httpx.MockTransport:
+    """Answer like a Modal web endpoint whose request outlives its 150 s limit.
+
+    Modal does not fail such a request: it returns a 303 to the same URL tagged with
+    the function call, and that result URL blocks until the response is ready.
+    """
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if "__modal_function_call_id" not in request.url.params:
+            location = request.url.copy_add_param("__modal_function_call_id", "fc-1")
+            return httpx.Response(303, headers={"location": str(location)})
+        return httpx.Response(200, content=body, headers={"content-type": content_type})
+
+    return httpx.MockTransport(handler)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "call",
+    [
+        lambda c: c.submit_task({"prompt": "test"}),
+        lambda c: c.query_result(["task-1"]),
+        lambda c: c.health_check(),
+        lambda c: c.list_models(),
+        lambda c: c.get_random_sample(),
+        lambda c: c.format_input({"prompt": "test"}),
+    ],
+    ids=[
+        "submit_task",
+        "query_result",
+        "health_check",
+        "list_models",
+        "get_random_sample",
+        "format_input",
+    ],
+)
+async def test_calls_survive_modal_long_request_redirect(call):
+    # Any of these can be the request that wakes the GPU, and a wake that rebuilds
+    # the snapshot runs past 150 s. Unfollowed, the 303 surfaced as a 502.
+    transport = _modal_long_request_transport(
+        b'{"code": 200, "data": {"task_id": "test-task"}}', "application/json"
+    )
+    async with httpx.AsyncClient(transport=transport) as http_client:
+        client = ACEStepClient(http_client)
+        client.base_url = "http://fake-api"
+
+        result = await call(client)
+
+    assert result == {"task_id": "test-task"}
+
+
+@pytest.mark.asyncio
+async def test_audio_download_survives_modal_long_request_redirect():
+    transport = _modal_long_request_transport(b"ID3-audio-bytes", "audio/mpeg")
+    async with httpx.AsyncClient(transport=transport) as http_client:
+        client = ACEStepClient(http_client)
+        client.base_url = "http://fake-api"
+
+        resp = await client.download_audio_stream("/outputs/song.mp3")
+        try:
+            assert await resp.aread() == b"ID3-audio-bytes"
+        finally:
+            await resp.aclose()
