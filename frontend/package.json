@@ -13,17 +13,17 @@
   "dependencies": {
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
-    "lucide-react": "^1.45.0",
-    "next": "16.4.0",
-    "react": "^19.3.0",
-    "react-dom": "^19.3.0",
-    "tailwind-merge": "^3.6.0",
+    "lucide-react": "^1.57.0",
+    "next": "16.4.1",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "tailwind-merge": "^3.7.0",
     "tailwindcss-animate": "^1.0.7",
-    "wavesurfer.js": "^7.12.11",
-    "zod": "^4.6.5"
+    "wavesurfer.js": "^8.0.2",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
-    "@babel/core": "^7.29.7",
+    "@babel/core": "^8.0.7",
     "@rolldown/plugin-babel": "^0.2.4",
     "@tailwindcss/postcss": "^4",
     "@testing-library/jest-dom": "^7.0.1",
@@ -32,13 +32,13 @@
     "@types/node": "^26",
     "@types/react": "^19",
     "@types/react-dom": "^19",
-    "@vitejs/plugin-react": "^6.1.1",
+    "@vitejs/plugin-react": "^6.1.2",
     "babel-plugin-react-compiler": "1.0.0",
-    "eslint": "^9.39.5",
-    "eslint-config-next": "16.4.0",
-    "jsdom": "^30.0.1",
+    "eslint": "^10.12.0",
+    "eslint-config-next": "16.4.1",
+    "jsdom": "^30.1.2",
     "tailwindcss": "^4",
-    "typescript": "^5",
-    "vitest": "^4.1.11"
+    "typescript": "^7",
+    "vitest": "^5.0.4"
   }
 }
