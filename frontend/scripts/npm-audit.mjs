@@ -5,6 +5,7 @@
 // it passes, the advisory fails the audit again until someone re-checks for a fix.
 import { spawnSync } from "node:child_process";
 
+// Shape: "GHSA-xxxx-xxxx-xxxx": { reviewBy: "YYYY-MM-DD" }, with a comment on why.
 const ACCEPTED = {};
 const FAILING_SEVERITIES = new Set(["high", "critical"]);
 
