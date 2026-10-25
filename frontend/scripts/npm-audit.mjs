@@ -5,13 +5,7 @@
 // it passes, the advisory fails the audit again until someone re-checks for a fix.
 import { spawnSync } from "node:child_process";
 
-const ACCEPTED = {
-    // braces <=3.0.3: stack-exhaustion DoS from deeply nested glob patterns. No
-    // patched release exists — 3.0.3 is the latest. Reached only at lint time via
-    // eslint-config-next -> @next/eslint-plugin-next -> fast-glob -> micromatch,
-    // whose patterns come from our own config, and never shipped to the browser.
-    "GHSA-vfj7-8cjw-p6xm": { reviewBy: "2027-01-06" },
-};
+const ACCEPTED = {};
 const FAILING_SEVERITIES = new Set(["high", "critical"]);
 
 const audit = spawnSync("npm", ["audit", "--json"], { encoding: "utf8" });

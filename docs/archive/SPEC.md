@@ -555,24 +555,27 @@ Branch protection rules on `main` enforce that no PRs can be merged without pass
 
 The backend uses the `uv` ecosystem rather than the generic `pip` ecosystem: only `uv` resolves and updates `uv.lock`, which is the file `uv sync --frozen` and the `pip-audit` step in `security.yml` ultimately depend on.
 
-`pydantic-core` is a special case on the backend: `pydantic` pins it exactly (`pydantic 2.13.5` requires `pydantic-core==2.46.5`), so a Dependabot PR that bumps `pydantic-core` on its own produces a `requirements.txt` that cannot be installed. It moves only when `pydantic` moves; close such a PR rather than merging it.
+`pydantic-core` is a special case on the backend: `pydantic` pins it exactly (`pydantic 2.14.1` requires `pydantic-core==2.50.1`), so a Dependabot PR that bumps `pydantic-core` on its own produces a `requirements.txt` that cannot be installed. It moves only when `pydantic` moves; close such a PR rather than merging it.
 
 Each ecosystem groups all of its updates into a single pull request (`groups: patterns: ["*"]`) and is capped at 5 open PRs, so routine bumps arrive as one reviewable change per ecosystem instead of one PR per package. Commit messages use the conventional-commit prefixes `build(deps)` / `build(deps-dev)` so Release Please does not treat dependency bumps as features or fixes.
 
-**Held-back major upgrades.** Three frontend majors are deliberately not taken. Each is blocked by a dependency that has not yet shipped support, so there is no migration to perform on this side — the hold lifts when upstream releases:
+**Held-back major upgrades.** Two frontend majors are deliberately not taken. Each is blocked by a dependency that has not yet shipped support, so there is no migration to perform on this side — the hold lifts when upstream releases:
 
 | Package | Offered | Held at | Blocker |
 |---|---|---|---|
 | `typescript` | 7.x | 5.x | `typescript-eslint` (via `eslint-config-next`) refuses to load under the TS 7 API — *"typescript-eslint does not support TS 7.0"* — so `npm run lint` fails outright. Its latest release still declares `typescript: >=4.8.4 <6.1.0` |
-| `eslint` | 10.x | 9.x | `eslint-plugin-react` (via `eslint-config-next`) calls the removed ESLint 9 context API — `contextOrFilename.getFilename is not a function`. Its latest release, 7.37.5, still peers on `eslint: ^9.7` |
-| `vitest` | 5.x | 4.x | vitest 5 widened `Assertion` to two type parameters; `@testing-library/jest-dom` 7.0.1 (latest) still augments the one-parameter form, so its matcher types stop resolving and `tsc` fails on every `toBeInTheDocument` / `toBeDisabled` in the test suite. The matchers work at runtime — the break is types only |
+| `vitest` | 5.x | 4.x | vitest 5 widened `Assertion` to two type parameters; `@testing-library/jest-dom` 7.0.1 (latest) still augments the one-parameter form, so its matcher types stop resolving and `tsc` (and therefore `next build`) fails on every `toBeInTheDocument` / `toBeDisabled` in the test suite. The matchers work at runtime — the break is types only. Tracked upstream in testing-library/jest-dom#738, fix in #742 |
 
-None of the three carries a security advisory, so holding them costs no coverage. Dependabot will keep re-offering them in the frontend group until each upstream lands.
+Neither carries a security advisory — the `@vitest/mocker` advisories are patched within 4.x, at 4.1.12 — so holding them costs no coverage. Dependabot will keep re-offering them in the frontend group until each upstream lands.
 
 Two majors that *were* held have since been taken, because the blocker was ours to migrate rather than upstream's to ship:
 
 - `lucide-react` 0.x → 1.x. v1 removed every brand icon, and `/about` imported `Github`. The mark now lives in `src/components/icons/GithubIcon.tsx` as inline SVG; every other icon the app imports still exists in v1.
 - `@vitejs/plugin-react` 5.x → 6.x. v6 removed the `babel` option `vitest.config.ts` used for `babel-plugin-react-compiler`. React Compiler now runs as a separate Babel pass — `react()` composed with `babel({ presets: [reactCompilerPreset()] })` from `@rolldown/plugin-babel` — which keeps the same compiler `next build` uses, instead of the experimental `compiler: true` oxc port.
+
+One hold lifted upstream:
+
+- `eslint` 9.x → 10.x. `eslint-config-next` 16.4 wraps `eslint-plugin-react` and `eslint-plugin-import` in its own `fixupPluginRules` shim, which restores the context API ESLint 10 removed; `eslint-plugin-jsx-a11y` never used it. All three still declare `eslint: ^9` peers, so `npm ls` flags them as invalid, but `npm ci` installs cleanly and their rules still fire.
 
 ---
 
